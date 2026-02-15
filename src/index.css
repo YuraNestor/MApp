@@ -17,7 +17,8 @@ body {
   margin: 0;
   padding: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
+  /* Dynamic viewport height fixes mobile browser bar issues */
   overflow: hidden;
 }
 
