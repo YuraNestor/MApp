@@ -51,5 +51,23 @@ export function useSensors(isRecording) {
         return () => window.removeEventListener('devicemotion', handleMotion);
     }, [isRecording]);
 
-    return { roughness, motionData };
+    const requestPermission = async () => {
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            try {
+                const permissionState = await DeviceMotionEvent.requestPermission();
+                if (permissionState === 'granted') {
+                    return true;
+                } else {
+                    alert("Permission to access motion sensors was denied.");
+                    return false;
+                }
+            } catch (error) {
+                console.error(error);
+                return false;
+            }
+        }
+        return true; // Non-iOS devices don't need permission
+    };
+
+    return { roughness, motionData, requestPermission };
 }

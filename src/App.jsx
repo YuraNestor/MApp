@@ -10,7 +10,7 @@ function App() {
   const [points, setPoints] = useState([]);
 
   // Use our custom sensor hook
-  const { roughness, motionData } = useSensors(isRecording);
+  const { roughness, motionData, requestPermission } = useSensors(isRecording);
 
   // Geo-location tracking
   useEffect(() => {
@@ -30,26 +30,36 @@ function App() {
     };
   }, []);
 
+  // Refs for tracking latest values in interval
+  const posRef = useRef(null);
+  const roughnessRef = useRef(0);
+
+  useEffect(() => {
+    posRef.current = currentPos;
+    roughnessRef.current = roughness;
+  }, [currentPos, roughness]);
+
   // Record data points
   useEffect(() => {
-    if (isRecording && currentPos) {
-      const interval = setInterval(() => {
-        // Only record if we have a valid roughness reading
-        // In a real app, we'd filter by checking if we actually moved distance-wise
+    if (!isRecording) return;
+
+    const interval = setInterval(() => {
+      // Use refs to get latest values without resetting interval
+      if (posRef.current) {
         setPoints(prev => [
           ...prev,
           {
-            lat: currentPos.lat,
-            lng: currentPos.lng,
-            roughness: roughness,
+            lat: posRef.current.lat,
+            lng: posRef.current.lng,
+            roughness: roughnessRef.current,
             timestamp: Date.now()
           }
         ]);
-      }, 1000); // 1 point per second
+      }
+    }, 1000); // 1 point per second
 
-      return () => clearInterval(interval);
-    }
-  }, [isRecording, currentPos, roughness]);
+    return () => clearInterval(interval);
+  }, [isRecording]); // Only restart if recording status changes
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
@@ -57,7 +67,14 @@ function App() {
 
       <NavigationOverlay
         isRecording={isRecording}
-        onToggleRecording={() => setIsRecording(!isRecording)}
+        onToggleRecording={async () => {
+          if (!isRecording) {
+            const granted = await requestPermission();
+            if (granted) setIsRecording(true);
+          } else {
+            setIsRecording(false);
+          }
+        }}
         roughness={roughness}
       />
 
