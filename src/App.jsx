@@ -40,6 +40,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [mapStyle, setMapStyle] = useState('dark');
   const [followUser, setFollowUser] = useState(true);
+  const [sensitivity, setSensitivity] = useState(1.0);
 
   // CSV Export
   const handleExport = () => {
@@ -122,6 +123,7 @@ function App() {
         mapStyle={mapStyle}
         followUser={followUser}
         onMapDrag={() => setFollowUser(false)}
+        sensitivity={sensitivity}
       />
 
       {/* Settings Button (Top Right) */}
@@ -153,6 +155,8 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         currentStyle={mapStyle}
         onStyleChange={setMapStyle}
+        sensitivity={sensitivity}
+        onSensitivityChange={setSensitivity}
         onExport={handleExport}
         onImport={handleImport}
       />

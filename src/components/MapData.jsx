@@ -37,7 +37,7 @@ const TILE_LAYERS = {
     }
 };
 
-export default function MapData({ points, currentPos, mapStyle = 'dark', followUser, onMapDrag }) {
+export default function MapData({ points, currentPos, mapStyle = 'dark', followUser, onMapDrag, sensitivity = 1.0 }) {
     const [position, setPosition] = useState([51.505, -0.09]); // Default London
     const activeLayer = TILE_LAYERS[mapStyle] || TILE_LAYERS.dark;
 
@@ -47,11 +47,12 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
         }
     }, [currentPos]);
 
-    // Color gradient based on roughness (0-10)
-    const getColor = (roughness) => {
-        if (roughness < 2) return '#00ff00'; // Green
-        if (roughness < 5) return '#ffff00'; // Yellow
-        if (roughness < 8) return '#ffa500'; // Orange
+    // Color gradient based on roughness (0-10) and sensitivity
+    const getColor = (rawRoughness) => {
+        const adjustedRoughness = rawRoughness * sensitivity;
+        if (adjustedRoughness < 2) return '#00ff00'; // Green
+        if (adjustedRoughness < 5) return '#ffff00'; // Yellow
+        if (adjustedRoughness < 8) return '#ffa500'; // Orange
         return '#ff0000'; // Red
     };
 

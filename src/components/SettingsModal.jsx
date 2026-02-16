@@ -5,6 +5,8 @@ export default function SettingsModal({
     onClose,
     currentStyle,
     onStyleChange,
+    sensitivity,
+    onSensitivityChange,
     onExport,
     onImport
 }) {
@@ -73,6 +75,25 @@ export default function SettingsModal({
                                 {style.name}
                             </label>
                         ))}
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: '2rem' }}>
+                    <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', color: '#aaa' }}>
+                        Sensitivity: {sensitivity}x
+                    </h3>
+                    <input
+                        type="range"
+                        min="0.5"
+                        max="3.0"
+                        step="0.1"
+                        value={sensitivity}
+                        onChange={(e) => onSensitivityChange(parseFloat(e.target.value))}
+                        style={{ width: '100%', accentColor: '#646cff', cursor: 'pointer' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#666' }}>
+                        <span>Less Sensitive</span>
+                        <span>More Sensitive</span>
                     </div>
                 </div>
 
