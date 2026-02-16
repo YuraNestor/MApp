@@ -11,8 +11,25 @@ function RecenterMap({ lat, lng }) {
     return null;
 }
 
-export default function MapData({ points, currentPos }) {
+// Map style URLs
+const TILE_LAYERS = {
+    dark: {
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    },
+    light: {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    },
+    satellite: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+    }
+};
+
+export default function MapData({ points, currentPos, mapStyle = 'dark' }) {
     const [position, setPosition] = useState([51.505, -0.09]); // Default London
+    const activeLayer = TILE_LAYERS[mapStyle] || TILE_LAYERS.dark;
 
     useEffect(() => {
         if (currentPos) {
@@ -31,8 +48,8 @@ export default function MapData({ points, currentPos }) {
     return (
         <MapContainer center={position} zoom={15} style={{ height: '100%', width: '100%' }}>
             <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                attribution={activeLayer.attr}
+                url={activeLayer.url}
             />
 
             {currentPos && <RecenterMap lat={currentPos.lat} lng={currentPos.lng} />}

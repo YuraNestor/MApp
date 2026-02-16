@@ -12,7 +12,7 @@ export default function NavigationOverlay({ isRecording, onToggleRecording, roug
     return (
         <div style={{
             position: 'absolute',
-            bottom: 'calc(20px + env(safe-area-inset-bottom))', // Respect iPhone home indicator/toolbar
+            bottom: 'calc(80px + env(safe-area-inset-bottom))', // Adjusted higher to clear Safari address bar
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 1000,

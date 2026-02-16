@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import './index.css';
 import MapData from './components/MapData';
 import NavigationOverlay from './components/NavigationOverlay';
+import SettingsModal from './components/SettingsModal';
+import { Settings } from 'lucide-react';
 import { useSensors } from './lib/sensors';
 
 function App() {
@@ -34,6 +36,56 @@ function App() {
   const posRef = useRef(null);
   const roughnessRef = useRef(0);
 
+  // Settings State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [mapStyle, setMapStyle] = useState('dark');
+
+  // CSV Export
+  const handleExport = () => {
+    const headers = "timestamp,lat,lng,roughness\n";
+    const csvContent = points.map(p =>
+      `${new Date(p.timestamp).toISOString()},${p.lat},${p.lng},${p.roughness}`
+    ).join("\n");
+
+    const blob = new Blob([headers + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `road_quality_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // CSV Import
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target.result;
+      const lines = text.split('\n').slice(1); // Skip header
+      const newPoints = lines
+        .filter(line => line.trim() !== '')
+        .map(line => {
+          const [timestamp, lat, lng, roughness] = line.split(',');
+          return {
+            timestamp: new Date(timestamp).getTime(),
+            lat: parseFloat(lat),
+            lng: parseFloat(lng),
+            roughness: parseFloat(roughness)
+          };
+        })
+        .filter(p => !isNaN(p.lat) && !isNaN(p.lng));
+
+      setPoints(prev => [...prev, ...newPoints]);
+      setIsSettingsOpen(false);
+      alert(`Imported ${newPoints.length} points.`);
+    };
+    reader.readAsText(file);
+  };
+
   useEffect(() => {
     posRef.current = currentPos;
     roughnessRef.current = roughness;
@@ -63,7 +115,40 @@ function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
-      <MapData points={points} currentPos={currentPos} />
+      <MapData points={points} currentPos={currentPos} mapStyle={mapStyle} />
+
+      {/* Settings Button (Top Right) */}
+      <button
+        onClick={() => setIsSettingsOpen(true)}
+        style={{
+          position: 'absolute',
+          top: 'calc(20px + env(safe-area-inset-top))', // Respect iPhone status bar
+          right: '20px',
+          zIndex: 1001,
+          background: 'rgba(30,30,30,0.8)',
+          color: 'white',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: '50%',
+          width: '44px',
+          height: '44px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(5px)',
+          cursor: 'pointer'
+        }}
+      >
+        <Settings size={24} />
+      </button>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentStyle={mapStyle}
+        onStyleChange={setMapStyle}
+        onExport={handleExport}
+        onImport={handleImport}
+      />
 
       <NavigationOverlay
         isRecording={isRecording}
@@ -78,25 +163,7 @@ function App() {
         roughness={roughness}
       />
 
-      {/* Debug view for desktop/testing */}
-      <div style={{
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        background: 'rgba(0,0,0,0.5)',
-        color: 'white',
-        padding: 10,
-        fontSize: 10,
-        pointerEvents: 'none',
-        zIndex: 9999
-      }}>
-        <p>Lat: {currentPos?.lat.toFixed(4)}</p>
-        <p>Lng: {currentPos?.lng.toFixed(4)}</p>
-        <p>Roughness: {roughness.toFixed(2)}</p>
-        <p>AccX: {motionData.x?.toFixed(2)}</p>
-        <p>AccY: {motionData.y?.toFixed(2)}</p>
-        <p>AccZ: {motionData.z?.toFixed(2)}</p>
-      </div>
+
     </div>
   );
 }
