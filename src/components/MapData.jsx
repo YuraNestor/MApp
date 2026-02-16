@@ -1,13 +1,23 @@
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useState } from 'react';
 
-// Helper to re-center map
-function RecenterMap({ lat, lng }) {
+// Helper to handle map events and centering
+function MapController({ center, followUser, onMapDrag }) {
     const map = useMap();
+
+    useMapEvents({
+        dragstart: () => {
+            onMapDrag();
+        }
+    });
+
     useEffect(() => {
-        map.setView([lat, lng]);
-    }, [lat, lng, map]);
+        if (followUser && center) {
+            map.setView(center);
+        }
+    }, [center, followUser, map]);
+
     return null;
 }
 
@@ -27,7 +37,7 @@ const TILE_LAYERS = {
     }
 };
 
-export default function MapData({ points, currentPos, mapStyle = 'dark' }) {
+export default function MapData({ points, currentPos, mapStyle = 'dark', followUser, onMapDrag }) {
     const [position, setPosition] = useState([51.505, -0.09]); // Default London
     const activeLayer = TILE_LAYERS[mapStyle] || TILE_LAYERS.dark;
 
@@ -52,7 +62,11 @@ export default function MapData({ points, currentPos, mapStyle = 'dark' }) {
                 url={activeLayer.url}
             />
 
-            {currentPos && <RecenterMap lat={currentPos.lat} lng={currentPos.lng} />}
+            {currentPos && <MapController
+                center={[currentPos.lat, currentPos.lng]}
+                followUser={followUser}
+                onMapDrag={onMapDrag}
+            />}
 
             {/* Current Position Marker */}
             {currentPos && (

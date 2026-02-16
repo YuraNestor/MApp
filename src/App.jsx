@@ -3,7 +3,7 @@ import './index.css';
 import MapData from './components/MapData';
 import NavigationOverlay from './components/NavigationOverlay';
 import SettingsModal from './components/SettingsModal';
-import { Settings } from 'lucide-react';
+import { Settings, Crosshair } from 'lucide-react';
 import { useSensors } from './lib/sensors';
 
 function App() {
@@ -39,6 +39,7 @@ function App() {
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [mapStyle, setMapStyle] = useState('dark');
+  const [followUser, setFollowUser] = useState(true);
 
   // CSV Export
   const handleExport = () => {
@@ -115,7 +116,13 @@ function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
-      <MapData points={points} currentPos={currentPos} mapStyle={mapStyle} />
+      <MapData
+        points={points}
+        currentPos={currentPos}
+        mapStyle={mapStyle}
+        followUser={followUser}
+        onMapDrag={() => setFollowUser(false)}
+      />
 
       {/* Settings Button (Top Right) */}
       <button
@@ -149,6 +156,32 @@ function App() {
         onExport={handleExport}
         onImport={handleImport}
       />
+
+      {/* Recenter Button */}
+      {!followUser && (
+        <button
+          onClick={() => setFollowUser(true)}
+          style={{
+            position: 'absolute',
+            bottom: 'calc(240px + env(safe-area-inset-bottom))', // Moved higher to avoid overlap
+            right: '20px',
+            zIndex: 1001,
+            background: 'rgba(30,30,30,0.8)',
+            color: 'white',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: '50%',
+            width: '44px',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(5px)',
+            cursor: 'pointer'
+          }}
+        >
+          <Crosshair size={24} />
+        </button>
+      )}
 
       <NavigationOverlay
         isRecording={isRecording}
