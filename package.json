@@ -1,12 +1,12 @@
 {
   "name": "mapp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0.10",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "predeploy": "npm run build",
+    "predeploy": "node scripts/bump-version.js && npm run build",
     "deploy": "gh-pages -d dist",
     "lint": "eslint .",
     "preview": "vite preview"

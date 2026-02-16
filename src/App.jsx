@@ -5,6 +5,8 @@ import NavigationOverlay from './components/NavigationOverlay';
 import SettingsModal from './components/SettingsModal';
 import { Settings, Crosshair } from 'lucide-react';
 import { useSensors } from './lib/sensors';
+import { useWakeLock } from './lib/wakeLock';
+import pkg from '../package.json';
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
@@ -13,6 +15,9 @@ function App() {
 
   // Use our custom sensor hook
   const { roughness, motionData, requestPermission } = useSensors(isRecording);
+
+  // Prevent screen sleep while recording
+  useWakeLock(isRecording);
 
   // Geo-location tracking
   useEffect(() => {
@@ -117,6 +122,24 @@ function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+
+      {/* Version Display */}
+      <div style={{
+        position: 'absolute',
+        top: 'calc(10px + env(safe-area-inset-top))',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 1002,
+        background: 'rgba(0,0,0,0.5)',
+        color: 'rgba(255,255,255,0.7)',
+        padding: '2px 8px',
+        borderRadius: '10px',
+        fontSize: '10px',
+        pointerEvents: 'none'
+      }}>
+        v{pkg.version}
+      </div>
+
       <MapData
         points={points}
         currentPos={currentPos}
