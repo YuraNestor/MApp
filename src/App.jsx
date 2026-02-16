@@ -25,8 +25,12 @@ function App() {
     if ('geolocation' in navigator) {
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          const { latitude, longitude } = pos.coords;
-          setCurrentPos({ lat: latitude, lng: longitude });
+          const { latitude, longitude, speed, heading } = pos.coords;
+          // Speed is in m/s. Convert to km/h. If null, use 0.
+          // Heading is in degrees (0-360). 0 is North. NaN/null if speed is 0.
+          const speedKmh = speed ? speed * 3.6 : 0;
+          const currentHeading = heading || 0;
+          setCurrentPos({ lat: latitude, lng: longitude, speed: speedKmh, heading: currentHeading });
         },
         (err) => console.error("Geo error:", err),
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
@@ -46,12 +50,13 @@ function App() {
   const [mapStyle, setMapStyle] = useState('dark');
   const [followUser, setFollowUser] = useState(true);
   const [sensitivity, setSensitivity] = useState(1.0);
+  const [speedInfluence, setSpeedInfluence] = useState(0.5); // 0 to 1
 
   // CSV Export
   const handleExport = () => {
-    const headers = "timestamp,lat,lng,roughness\n";
+    const headers = "timestamp,lat,lng,roughness,speed,heading\n";
     const csvContent = points.map(p =>
-      `${new Date(p.timestamp).toISOString()},${p.lat},${p.lng},${p.roughness}`
+      `${new Date(p.timestamp).toISOString()},${p.lat},${p.lng},${p.roughness},${p.speed || ''},${p.heading || ''}`
     ).join("\n");
 
     const blob = new Blob([headers + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -76,12 +81,14 @@ function App() {
       const newPoints = lines
         .filter(line => line.trim() !== '')
         .map(line => {
-          const [timestamp, lat, lng, roughness] = line.split(',');
+          const [timestamp, lat, lng, roughness, speed, heading] = line.split(',');
           return {
             timestamp: new Date(timestamp).getTime(),
             lat: parseFloat(lat),
             lng: parseFloat(lng),
-            roughness: parseFloat(roughness)
+            roughness: parseFloat(roughness),
+            speed: speed ? parseFloat(speed) : undefined,
+            heading: heading ? parseFloat(heading) : undefined
           };
         })
         .filter(p => !isNaN(p.lat) && !isNaN(p.lng));
@@ -110,6 +117,8 @@ function App() {
           {
             lat: posRef.current.lat,
             lng: posRef.current.lng,
+            speed: posRef.current.speed,
+            heading: posRef.current.heading,
             roughness: roughnessRef.current,
             timestamp: Date.now()
           }
@@ -147,6 +156,7 @@ function App() {
         followUser={followUser}
         onMapDrag={() => setFollowUser(false)}
         sensitivity={sensitivity}
+        speedInfluence={speedInfluence}
       />
 
       {/* Settings Button (Top Right) */}
@@ -180,6 +190,8 @@ function App() {
         onStyleChange={setMapStyle}
         sensitivity={sensitivity}
         onSensitivityChange={setSensitivity}
+        speedInfluence={speedInfluence}
+        onSpeedInfluenceChange={setSpeedInfluence}
         onExport={handleExport}
         onImport={handleImport}
       />

@@ -37,7 +37,7 @@ const TILE_LAYERS = {
     }
 };
 
-export default function MapData({ points, currentPos, mapStyle = 'dark', followUser, onMapDrag, sensitivity = 1.0 }) {
+export default function MapData({ points, currentPos, mapStyle = 'dark', followUser, onMapDrag, sensitivity = 1.0, speedInfluence = 0.5 }) {
     const [position, setPosition] = useState([51.505, -0.09]); // Default London
     const activeLayer = TILE_LAYERS[mapStyle] || TILE_LAYERS.dark;
 
@@ -47,9 +47,28 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
         }
     }, [currentPos]);
 
-    // Color gradient based on roughness (0-10) and sensitivity
-    const getColor = (rawRoughness) => {
-        const adjustedRoughness = rawRoughness * sensitivity;
+    // Color gradient based on roughness (0-10), sensitivity, and speed
+    const getColor = (point) => {
+        let adjustedRoughness = point.roughness * sensitivity;
+
+        // Speed Adjustment Logic
+        // If we have speed data, we adjust.
+        // 100 km/h = ideal (factor 1). 20 km/h = worst (factor 0).
+        if (point.speed !== undefined && point.speed !== null) {
+            const speed = point.speed;
+            const minSpeed = 20;
+            const maxSpeed = 100;
+
+            // Normalize speed to 0-1 range (clamped)
+            let speedFactor = (speed - minSpeed) / (maxSpeed - minSpeed);
+            if (speedFactor < 0) speedFactor = 0;
+            if (speedFactor > 1) speedFactor = 1;
+
+            // Reduce roughness if speed is high.
+            // Formula: NewRoughness = OldRoughness * (1 - (SpeedFactor * Influence))
+            adjustedRoughness = adjustedRoughness * (1 - (speedFactor * speedInfluence));
+        }
+
         if (adjustedRoughness < 2) return '#00ff00'; // Green
         if (adjustedRoughness < 5) return '#ffff00'; // Yellow
         if (adjustedRoughness < 8) return '#ffa500'; // Orange
@@ -87,8 +106,8 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
                     center={[p.lat, p.lng]}
                     radius={5}
                     pathOptions={{
-                        color: getColor(p.roughness),
-                        fillColor: getColor(p.roughness),
+                        color: getColor(p),
+                        fillColor: getColor(p),
                         fillOpacity: 0.7,
                         stroke: false
                     }}

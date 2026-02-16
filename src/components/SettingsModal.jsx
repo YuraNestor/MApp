@@ -7,6 +7,8 @@ export default function SettingsModal({
     onStyleChange,
     sensitivity,
     onSensitivityChange,
+    speedInfluence,
+    onSpeedInfluenceChange,
     onExport,
     onImport
 }) {
@@ -94,6 +96,25 @@ export default function SettingsModal({
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#666' }}>
                         <span>Less Sensitive</span>
                         <span>More Sensitive</span>
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: '2rem' }}>
+                    <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', color: '#aaa' }}>
+                        Speed Influence: {(speedInfluence * 100).toFixed(0)}%
+                    </h3>
+                    <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={speedInfluence}
+                        onChange={(e) => onSpeedInfluenceChange(parseFloat(e.target.value))}
+                        style={{ width: '100%', accentColor: '#646cff', cursor: 'pointer' }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#666' }}>
+                        <span>None</span>
+                        <span>High</span>
                     </div>
                 </div>
 
