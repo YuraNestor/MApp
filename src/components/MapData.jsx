@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useState } from 'react';
 
@@ -89,7 +90,23 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
             />}
 
             {/* Current Position Marker */}
-            {currentPos && (
+            {currentPos && currentPos.speed > 1 && currentPos.heading !== undefined && currentPos.heading !== null ? (
+                <Marker
+                    position={[currentPos.lat, currentPos.lng]}
+                    icon={L.divIcon({
+                        className: 'current-pos-arrow',
+                        html: `<div style="transform: rotate(${currentPos.heading}deg); display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="#3b82f6" stroke="white" stroke-width="2" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 2L22 22L12 18L2 22Z" />
+                            </svg>
+                        </div>`,
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    })}
+                >
+                    <Popup>You are here</Popup>
+                </Marker>
+            ) : currentPos && (
                 <CircleMarker
                     center={[currentPos.lat, currentPos.lng]}
                     radius={10}
@@ -100,19 +117,47 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
             )}
 
             {/* Recorded Road Quality Points */}
-            {points.map((p, idx) => (
-                <CircleMarker
-                    key={idx}
-                    center={[p.lat, p.lng]}
-                    radius={5}
-                    pathOptions={{
-                        color: getColor(p),
-                        fillColor: getColor(p),
-                        fillOpacity: 0.7,
-                        stroke: false
-                    }}
-                />
-            ))}
+            {points.map((p, idx) => {
+                const color = getColor(p);
+                const hasDirection = p.speed > 1 && p.heading !== undefined && p.heading !== null;
+
+                if (hasDirection) {
+                    const arrowHtml = `<div style="transform: rotate(${p.heading}deg); display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="${color}" stroke="#000" stroke-width="1" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L22 22L12 18L2 22Z" />
+                        </svg>
+                    </div>`;
+
+                    const arrowIcon = L.divIcon({
+                        className: 'custom-arrow-icon',
+                        html: arrowHtml,
+                        iconSize: [14, 14],
+                        iconAnchor: [7, 7]
+                    });
+
+                    return (
+                        <Marker
+                            key={idx}
+                            position={[p.lat, p.lng]}
+                            icon={arrowIcon}
+                        />
+                    );
+                }
+
+                return (
+                    <CircleMarker
+                        key={idx}
+                        center={[p.lat, p.lng]}
+                        radius={5}
+                        pathOptions={{
+                            color: color,
+                            fillColor: color,
+                            fillOpacity: 0.7,
+                            stroke: false
+                        }}
+                    />
+                );
+            })}
         </MapContainer>
     );
 }
