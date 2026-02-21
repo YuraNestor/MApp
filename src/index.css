@@ -20,6 +20,7 @@ body {
   height: 100dvh;
   /* Dynamic viewport height fixes mobile browser bar issues */
   overflow: hidden;
+  background-color: #000;
 }
 
 #root {
@@ -27,8 +28,12 @@ body {
   height: 100%;
 }
 
-.leaflet-container {
-  width: 100%;
-  height: 100%;
-  z-index: 0;
+.maplibre-container {
+  width: 100vw;
+  height: 100dvh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }

@@ -3,7 +3,8 @@ import './index.css';
 import MapData from './components/MapData';
 import NavigationOverlay from './components/NavigationOverlay';
 import SettingsModal from './components/SettingsModal';
-import { Settings, Crosshair } from 'lucide-react';
+import SearchModal from './components/SearchModal';
+import { Settings, Crosshair, Search, X } from 'lucide-react';
 import { useSensors } from './lib/sensors';
 import { useWakeLock } from './lib/wakeLock';
 import pkg from '../package.json';
@@ -51,6 +52,37 @@ function App() {
   const [followUser, setFollowUser] = useState(true);
   const [sensitivity, setSensitivity] = useState(1.0);
   const [speedInfluence, setSpeedInfluence] = useState(0.5); // 0 to 1
+
+  // Navigation State
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [destination, setDestination] = useState(null);
+  const [routeGeometry, setRouteGeometry] = useState(null);
+
+  // Fetch Route when Destination is set
+  useEffect(() => {
+    if (destination && currentPos) {
+      const fetchRoute = async () => {
+        try {
+          const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${currentPos.lng},${currentPos.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`);
+          const data = await res.json();
+          if (data.routes && data.routes.length > 0) {
+            // OSRM returns coordinates as [lng, lat], let's flip them for Leaflet Polyline: [lat, lng]
+            const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            setRouteGeometry(coords);
+          } else {
+            setRouteGeometry(null);
+          }
+        } catch (err) {
+          console.error("Routing error", err);
+          setRouteGeometry(null);
+        }
+      };
+
+      fetchRoute();
+    } else {
+      setRouteGeometry(null);
+    }
+  }, [destination]); // We fetch only initially when destination is explicitly changed by user to save API calls. If you want continuous rerouting, add currentPos but throttle it!
 
   // CSV Export
   const handleExport = () => {
@@ -157,7 +189,45 @@ function App() {
         onMapDrag={() => setFollowUser(false)}
         sensitivity={sensitivity}
         speedInfluence={speedInfluence}
+        destination={destination}
+        routeGeometry={routeGeometry}
+        onSetDestination={(latlng) => {
+          setDestination({ lat: latlng.lat, lng: latlng.lng, name: 'Dropped Pin' });
+          setFollowUser(true);
+        }}
       />
+
+      {/* Search / Cancel Route Button (Top Left of Center) */}
+      <button
+        onClick={() => {
+          if (destination) {
+            setDestination(null);
+            setRouteGeometry(null);
+          } else {
+            setIsSearchOpen(true);
+          }
+        }}
+        style={{
+          position: 'absolute',
+          top: 'calc(20px + env(safe-area-inset-top))',
+          left: '20px',
+          zIndex: 1001,
+          background: destination ? 'rgba(239, 68, 68, 0.9)' : 'rgba(30,30,30,0.8)',
+          color: 'white',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: '50%',
+          width: '44px',
+          height: '44px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(5px)',
+          cursor: 'pointer',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+        }}
+      >
+        {destination ? <X size={24} /> : <Search size={24} />}
+      </button>
 
       {/* Settings Button (Top Right) */}
       <button
@@ -194,6 +264,16 @@ function App() {
         onSpeedInfluenceChange={setSpeedInfluence}
         onExport={handleExport}
         onImport={handleImport}
+      />
+
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelect={(dest) => {
+          setDestination(dest);
+          setIsSearchOpen(false);
+          setFollowUser(true);
+        }}
       />
 
       {/* Recenter Button */}
