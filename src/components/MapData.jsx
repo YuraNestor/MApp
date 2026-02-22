@@ -175,17 +175,43 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
         if (routeGeometry && routeGeometry.length > 0) {
             const routeCoords = routeGeometry.map(coord => [coord[1], coord[0]]); // [lat, lng] to [lng, lat]
 
+            // ViewState params for calculating level of detail (LOD) optimization
+            const mapZoom = viewState.zoom || 15;
+            const camLat = viewState.latitude;
+            const camLng = viewState.longitude;
+
             for (let i = 0; i < routeCoords.length - 1; i++) {
                 const start = routeCoords[i];
                 const end = routeCoords[i + 1];
 
-                // MapLibre's line-gradient requires 'line-progress' and a single LineString.
-                // An easier approach for dynamic points is to split the segment into very small sub-segments.
-                // Calculate distance of this segment in meters
                 const segmentLength = getDistance(start[1], start[0], end[1], end[0]);
 
-                // Split long segments into chunks of ~5 meters to create a smooth gradient
-                const numSplits = Math.max(1, Math.ceil(segmentLength / 5));
+                let chunkSize = 5; // Default best quality
+
+                // Optimization: Distance from active camera coordinate
+                const distToCamera = getDistance(camLat, camLng, start[1], start[0]);
+
+                // Adjust chunk size drastically if we are zoomed out (mapZoom < 14)
+                if (mapZoom < 10) {
+                    chunkSize = Math.max(chunkSize, 500);
+                } else if (mapZoom < 12) {
+                    chunkSize = Math.max(chunkSize, 200);
+                } else if (mapZoom < 14) {
+                    chunkSize = Math.max(chunkSize, 50);
+                }
+
+                // Adjust chunk size if the segment is far away from current viewport focus (useful in 3D tilt mode)
+                // E.g. anything over 5km away gets rendered with 50m chunks
+                if (distToCamera > 50000) {
+                    chunkSize = Math.max(chunkSize, 500);
+                } else if (distToCamera > 10000) {
+                    chunkSize = Math.max(chunkSize, 100);
+                } else if (distToCamera > 3000) {
+                    chunkSize = Math.max(chunkSize, 25);
+                }
+
+                // Split long segments into chunks to create a smooth gradient
+                const numSplits = Math.max(1, Math.ceil(segmentLength / chunkSize));
 
                 for (let k = 0; k < numSplits; k++) {
                     const ratioStart = k / numSplits;
@@ -215,10 +241,10 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
 
                         const dist = getPerpendicularDist(p, subStart, subEnd);
 
-                        // If the distance is strictly Infinity, it means the point's perpendicular 
-                        // projection doesn't fall linearly on THIS specific 5m sub-segment.
+                        // If the distance is strictly Infinity, it means the point's perpendicular
+                        // projection doesn't fall linearly on THIS specific sub-segment.
                         // We strictly want to color based on perpendicular projections within 10 meters!
-                        if (dist <= 10) {
+                        if (dist <= Math.max(10, chunkSize / 2)) { // expand check radius slightly if chunk is huge
                             // Weight by inverse distance (closer points have stronger color influence)
                             let weight = 1 / (dist + 1); // +1 to avoid division by zero
                             sumRoughness += p.adjustedRoughness * weight;
@@ -276,7 +302,7 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
                         }
                     }
 
-                    const MAX_GAP_FILL = 20; // Maximum sub-segments (~100 meters) to interpolate across empty spaces.
+                    const MAX_GAP_FILL = 20; // Maximum sub-segments to interpolate across empty spaces.
 
                     // Parse rgb string to rgb array helper
                     const parseRgb = (rgbStr) => {
@@ -331,7 +357,7 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
             directionalPointsVisible: dirPoints
         };
 
-    }, [points, routeGeometry, sensitivity, speedInfluence]);
+    }, [points, routeGeometry, sensitivity, speedInfluence, viewState.zoom, viewState.latitude, viewState.longitude]);
 
 
     return (
