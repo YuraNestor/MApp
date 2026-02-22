@@ -33,19 +33,39 @@ const getStyleConfig = (type) => {
     };
 };
 
-const getDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3; // metres
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
+const getPerpendicularDist = (p, start, end) => {
+    const R = 6371000;
+    const d2r = Math.PI / 180;
 
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    // start is [lng, lat], end is [lng, lat]
+    const lat1 = start[1] * d2r;
+    const lng1 = start[0] * d2r;
+    const lat2 = end[1] * d2r;
+    const lng2 = end[0] * d2r;
+    const lat3 = p.lat * d2r;
+    const lng3 = p.lng * d2r;
 
-    return R * c;
+    const cosLat = Math.cos((lat1 + lat2) / 2);
+
+    const x2 = (lng2 - lng1) * cosLat;
+    const y2 = lat2 - lat1;
+    const x3 = (lng3 - lng1) * cosLat;
+    const y3 = lat3 - lat1;
+
+    const l2 = x2 * x2 + y2 * y2;
+    if (l2 === 0) return Infinity; // Start and end are identical
+
+    const t = (x3 * x2 + y3 * y2) / l2;
+
+    if (t < 0 || t > 1) return Infinity; // Perpendicular does not hit the segment
+
+    const projX = t * x2;
+    const projY = t * y2;
+
+    const dx = x3 - projX;
+    const dy = y3 - projY;
+
+    return Math.sqrt(dx * dx + dy * dy) * R;
 };
 
 export default function MapData({ points, currentPos, mapStyle = 'dark', followUser, onMapDrag, sensitivity = 1.0, speedInfluence = 0.5, destination, routeGeometry, onSetDestination }) {
@@ -116,7 +136,7 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
             else if (adjustedRoughness < 5) color = '#ffff00';
             else if (adjustedRoughness < 8) color = '#ffa500';
 
-            return { ...p, color, usedInRoute: false };
+            return { ...p, adjustedRoughness, color, usedInRoute: false };
         });
 
         // If we have a route, build it out of line segments, coloring by close points
@@ -127,30 +147,37 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
                 const start = routeCoords[i];
                 const end = routeCoords[i + 1];
 
-                const midLng = (start[0] + end[0]) / 2;
-                const midLat = (start[1] + end[1]) / 2;
+                // Bounding box for the segment (with ~10m padding / ~0.0001 degrees)
+                const minLng = Math.min(start[0], end[0]) - 0.0002;
+                const maxLng = Math.max(start[0], end[0]) + 0.0002;
+                const minLat = Math.min(start[1], end[1]) - 0.0002;
+                const maxLat = Math.max(start[1], end[1]) + 0.0002;
 
-                let closestPointIdx = -1;
-                let minDistance = Infinity;
+                let segmentRoughnessSum = 0;
+                let usedPointsCount = 0;
 
                 for (let j = 0; j < pointsWithMeta.length; j++) {
                     const p = pointsWithMeta[j];
-                    // Fast bounding box check (~50 meters)
-                    if (Math.abs(p.lat - midLat) > 0.0005 || Math.abs(p.lng - midLng) > 0.0005) continue;
+                    // Fast bounding box check
+                    if (p.lng < minLng || p.lng > maxLng || p.lat < minLat || p.lat > maxLat) continue;
 
-                    const dist = getDistance(midLat, midLng, p.lat, p.lng);
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        closestPointIdx = j;
+                    const dist = getPerpendicularDist(p, start, end);
+                    if (dist <= 10) {
+                        segmentRoughnessSum += p.adjustedRoughness;
+                        usedPointsCount++;
+                        p.usedInRoute = true;
                     }
                 }
 
                 let segmentColor = '#3b82f6'; // Default blue
 
-                // If a road quality point is within 25 meters, snap that color to the route
-                if (closestPointIdx !== -1 && minDistance < 25) {
-                    segmentColor = pointsWithMeta[closestPointIdx].color;
-                    pointsWithMeta[closestPointIdx].usedInRoute = true;
+                // If road quality points mapped to segment, average their roughness for segment color
+                if (usedPointsCount > 0) {
+                    const avgRoughness = segmentRoughnessSum / usedPointsCount;
+                    if (avgRoughness < 2) segmentColor = '#00ff00';
+                    else if (avgRoughness < 5) segmentColor = '#ffff00';
+                    else if (avgRoughness < 8) segmentColor = '#ffa500';
+                    else segmentColor = '#ff0000';
                 }
 
                 rDataFeatures.push({
