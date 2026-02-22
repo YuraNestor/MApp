@@ -68,6 +68,21 @@ const getPerpendicularDist = (p, start, end) => {
     return Math.sqrt(dx * dx + dy * dy) * R;
 };
 
+const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; // metres
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+};
+
 export default function MapData({ points, currentPos, mapStyle = 'dark', followUser, onMapDrag, sensitivity = 1.0, speedInfluence = 0.5, destination, routeGeometry, onSetDestination }) {
 
     // Manage ViewState manually for smooth following and 3D effects
@@ -139,7 +154,24 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
             return { ...p, adjustedRoughness, color, usedInRoute: false };
         });
 
-        // If we have a route, build it out of line segments, coloring by close points
+        const getColorFromRoughness = (roughness) => {
+            const clampledRoughness = Math.max(0, Math.min(10, roughness));
+
+            let r, g;
+            if (clampledRoughness <= 5) {
+                // 0 to 5: Green is 255, Red goes 0 -> 255
+                g = 255;
+                r = Math.round((clampledRoughness / 5) * 255);
+            } else {
+                // 5 to 10: Red is 255, Green goes 255 -> 0
+                r = 255;
+                g = Math.round((1 - ((clampledRoughness - 5) / 5)) * 255);
+            }
+
+            return `rgb(${r}, ${g}, 0)`;
+        };
+
+        // If we have a route, build it out of line segments, coloring by close points (Gradient Simulation)
         if (routeGeometry && routeGeometry.length > 0) {
             const routeCoords = routeGeometry.map(coord => [coord[1], coord[0]]); // [lat, lng] to [lng, lat]
 
@@ -147,47 +179,134 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
                 const start = routeCoords[i];
                 const end = routeCoords[i + 1];
 
-                // Bounding box for the segment (with ~10m padding / ~0.0001 degrees)
-                const minLng = Math.min(start[0], end[0]) - 0.0002;
-                const maxLng = Math.max(start[0], end[0]) + 0.0002;
-                const minLat = Math.min(start[1], end[1]) - 0.0002;
-                const maxLat = Math.max(start[1], end[1]) + 0.0002;
+                // MapLibre's line-gradient requires 'line-progress' and a single LineString.
+                // An easier approach for dynamic points is to split the segment into very small sub-segments.
+                // Calculate distance of this segment in meters
+                const segmentLength = getDistance(start[1], start[0], end[1], end[0]);
 
-                let segmentRoughnessSum = 0;
-                let usedPointsCount = 0;
+                // Split long segments into chunks of ~5 meters to create a smooth gradient
+                const numSplits = Math.max(1, Math.ceil(segmentLength / 5));
 
-                for (let j = 0; j < pointsWithMeta.length; j++) {
-                    const p = pointsWithMeta[j];
-                    // Fast bounding box check
-                    if (p.lng < minLng || p.lng > maxLng || p.lat < minLat || p.lat > maxLat) continue;
+                for (let k = 0; k < numSplits; k++) {
+                    const ratioStart = k / numSplits;
+                    const ratioEnd = (k + 1) / numSplits;
 
-                    const dist = getPerpendicularDist(p, start, end);
-                    if (dist <= 10) {
-                        segmentRoughnessSum += p.adjustedRoughness;
-                        usedPointsCount++;
-                        p.usedInRoute = true;
+                    const subStart = [
+                        start[0] + (end[0] - start[0]) * ratioStart,
+                        start[1] + (end[1] - start[1]) * ratioStart
+                    ];
+
+                    const subEnd = [
+                        start[0] + (end[0] - start[0]) * ratioEnd,
+                        start[1] + (end[1] - start[1]) * ratioEnd
+                    ];
+
+                    const midLng = (subStart[0] + subEnd[0]) / 2;
+                    const midLat = (subStart[1] + subEnd[1]) / 2;
+
+                    // Find points influencing this specific sub-segment
+                    let sumRoughness = 0;
+                    let totalWeight = 0;
+
+                    for (let j = 0; j < pointsWithMeta.length; j++) {
+                        const p = pointsWithMeta[j];
+                        // Fast bounding box check (~20m)
+                        if (Math.abs(p.lat - midLat) > 0.0002 || Math.abs(p.lng - midLng) > 0.0002) continue;
+
+                        const dist = getPerpendicularDist(p, subStart, subEnd);
+
+                        // If the distance is strictly Infinity, it means the point's perpendicular 
+                        // projection doesn't fall linearly on THIS specific 5m sub-segment.
+                        // We strictly want to color based on perpendicular projections within 10 meters!
+                        if (dist <= 10) {
+                            // Weight by inverse distance (closer points have stronger color influence)
+                            let weight = 1 / (dist + 1); // +1 to avoid division by zero
+                            sumRoughness += p.adjustedRoughness * weight;
+                            totalWeight += weight;
+                            p.usedInRoute = true;
+                        }
+                    }
+
+                    // Store null if no points influence it, so we can fill it in the second pass
+                    let subColor = null;
+
+                    if (totalWeight > 0) {
+                        const avgRoughness = sumRoughness / totalWeight;
+                        subColor = getColorFromRoughness(avgRoughness);
+                    }
+
+                    rDataFeatures.push({
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: [subStart, subEnd]
+                        },
+                        properties: {
+                            color: subColor,
+                            originalColor: subColor
+                        }
+                    });
+                }
+            }
+
+            // Second pass: fill in short gaps (null colors) using nearest colored neighbors
+            // If the gap is too long, we leave it as default blue.
+            for (let i = 0; i < rDataFeatures.length; i++) {
+                if (rDataFeatures[i].properties.color === null) {
+                    let prevColor = null;
+                    let nextColor = null;
+                    let gapSizeToPrev = 0;
+                    let gapSizeToNext = 0;
+
+                    // Find nearest previous colored segment
+                    for (let j = i - 1; j >= 0; j--) {
+                        gapSizeToPrev++;
+                        if (rDataFeatures[j].properties.originalColor !== null) {
+                            prevColor = rDataFeatures[j].properties.originalColor;
+                            break;
+                        }
+                    }
+
+                    // Find nearest next colored segment
+                    for (let j = i + 1; j < rDataFeatures.length; j++) {
+                        gapSizeToNext++;
+                        if (rDataFeatures[j].properties.originalColor !== null) {
+                            nextColor = rDataFeatures[j].properties.originalColor;
+                            break;
+                        }
+                    }
+
+                    const MAX_GAP_FILL = 20; // Maximum sub-segments (~100 meters) to interpolate across empty spaces.
+
+                    // Parse rgb string to rgb array helper
+                    const parseRgb = (rgbStr) => {
+                        const match = rgbStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                        return match ? [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])] : null;
+                    };
+
+                    // Only interpolate if we are close enough to known points
+                    if (gapSizeToPrev <= MAX_GAP_FILL && gapSizeToNext <= MAX_GAP_FILL && prevColor && nextColor) {
+                        const pRGB = parseRgb(prevColor);
+                        const nRGB = parseRgb(nextColor);
+                        if (pRGB && nRGB) {
+                            // Smoothly interpolate between prev and next based on relative position within gap
+                            const totalGap = gapSizeToPrev + gapSizeToNext;
+                            const ratio = gapSizeToPrev / totalGap;
+
+                            const r = Math.round(pRGB[0] + (nRGB[0] - pRGB[0]) * ratio);
+                            const g = Math.round(pRGB[1] + (nRGB[1] - pRGB[1]) * ratio);
+                            rDataFeatures[i].properties.color = `rgb(${r}, ${g}, 0)`;
+                        } else {
+                            rDataFeatures[i].properties.color = prevColor;
+                        }
+                    } else if (gapSizeToPrev <= MAX_GAP_FILL && prevColor) {
+                        rDataFeatures[i].properties.color = prevColor;
+                    } else if (gapSizeToNext <= MAX_GAP_FILL && nextColor) {
+                        rDataFeatures[i].properties.color = nextColor;
+                    } else {
+                        rDataFeatures[i].properties.color = '#3b82f6'; // fallback Default blue if no markers exist nearby
                     }
                 }
-
-                let segmentColor = '#3b82f6'; // Default blue
-
-                // If road quality points mapped to segment, average their roughness for segment color
-                if (usedPointsCount > 0) {
-                    const avgRoughness = segmentRoughnessSum / usedPointsCount;
-                    if (avgRoughness < 2) segmentColor = '#00ff00';
-                    else if (avgRoughness < 5) segmentColor = '#ffff00';
-                    else if (avgRoughness < 8) segmentColor = '#ffa500';
-                    else segmentColor = '#ff0000';
-                }
-
-                rDataFeatures.push({
-                    type: 'Feature',
-                    geometry: {
-                        type: 'LineString',
-                        coordinates: [start, end]
-                    },
-                    properties: { color: segmentColor }
-                });
             }
         }
 
@@ -197,7 +316,7 @@ export default function MapData({ points, currentPos, mapStyle = 'dark', followU
                 pData.push({
                     type: 'Feature',
                     geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-                    properties: { color: p.color, heading: p.heading, speed: p.speed }
+                    properties: { color: getColorFromRoughness(p.adjustedRoughness), heading: p.heading, speed: p.speed }
                 });
 
                 if (p.speed > 1 && p.heading !== undefined && p.heading !== null) {
