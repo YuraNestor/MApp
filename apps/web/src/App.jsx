@@ -58,10 +58,19 @@ function App() {
   const [destination, setDestination] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState(null);
 
-  // Fetch Route when Destination is set
+  // Ref to Throttle Route Re-calculations
+  const lastRouteFetchTime = useRef(0);
+
+  // Fetch Route when Destination is set or when position significantly changes
   useEffect(() => {
     if (destination && currentPos) {
       const fetchRoute = async () => {
+        // Throttle continuous rerouting to max once every 10 seconds
+        const now = Date.now();
+        if (now - lastRouteFetchTime.current < 10000 && routeGeometry !== null) {
+          return;
+        }
+
         try {
           const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${currentPos.lng},${currentPos.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`);
           const data = await res.json();
@@ -69,20 +78,21 @@ function App() {
             // OSRM returns coordinates as [lng, lat], let's flip them for Leaflet Polyline: [lat, lng]
             const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
             setRouteGeometry(coords);
+            lastRouteFetchTime.current = now;
           } else {
-            setRouteGeometry(null);
+            // Leave existing route if recalculation fails temporarily
           }
         } catch (err) {
           console.error("Routing error", err);
-          setRouteGeometry(null);
         }
       };
 
       fetchRoute();
     } else {
       setRouteGeometry(null);
+      lastRouteFetchTime.current = 0;
     }
-  }, [destination]); // We fetch only initially when destination is explicitly changed by user to save API calls. If you want continuous rerouting, add currentPos but throttle it!
+  }, [destination, currentPos]); // Re-evaluate when pos changes, but throttled internally
 
   // CSV Export
   const handleExport = () => {
