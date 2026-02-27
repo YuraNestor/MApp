@@ -29,8 +29,7 @@
       [
         "@rnmapbox/maps",
         {
-          "RNMapboxMapsImpl": "maplibre",
-          "RNMapboxMapsDownloadToken": "sk-placeholder"
+          "RNMapboxMapsImpl": "mapbox"
         }
       ]
     ]
