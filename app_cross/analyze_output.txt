@@ -3,13 +3,16 @@ Analyzing app_cross...
    info - 'Share' is deprecated and shouldn't be used. Use SharePlus instead - lib\services\data_service.dart:44:13 - deprecated_member_use
    info - 'shareXFiles' is deprecated and shouldn't be used. Use SharePlus.instance.share() instead - lib\services\data_service.dart:44:19 - deprecated_member_use
    info - Don't invoke 'print' in production code - lib\services\data_service.dart:47:7 - avoid_print
-warning - Unused import: 'package:flutter_dotenv/flutter_dotenv.dart' - lib\widgets\map_screen.dart:10:8 - unused_import
+warning - The value of the field '_userMarker' isn't used - lib\widgets\map_screen.dart:50:20 - unused_field
 warning - The value of the field '_destination' isn't used - lib\widgets\map_screen.dart:54:17 - unused_field
    info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:85:7 - avoid_print
-   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:193:7 - avoid_print
-   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:234:7 - avoid_print
-   info - 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion - lib\widgets\map_screen.dart:254:27 - deprecated_member_use
-   info - Constructors in '@immutable' classes should be declared as 'const' - lib\widgets\map_screen.dart:353:4 - prefer_const_constructors_in_immutables
+  error - The method 'subscribe' isn't defined for the type 'MapboxMap' - lib\widgets\map_screen.dart:103:17 - undefined_method
+  error - Undefined name 'MapBoxEvent' - lib\widgets\map_screen.dart:103:27 - undefined_identifier
+  error - Undefined class 'EventData' - lib\widgets\map_screen.dart:103:56 - undefined_class
+   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:217:7 - avoid_print
+   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:258:7 - avoid_print
+   info - 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion - lib\widgets\map_screen.dart:278:27 - deprecated_member_use
+   info - Constructors in '@immutable' classes should be declared as 'const' - lib\widgets\map_screen.dart:396:4 - prefer_const_constructors_in_immutables
    info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\navigation_overlay.dart:34:31 - deprecated_member_use
    info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\navigation_overlay.dart:38:35 - deprecated_member_use
    info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\navigation_overlay.dart:94:69 - deprecated_member_use

@@ -100,9 +100,16 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   bool _hasCenteredInitially = false;
+  bool _isCentered = false;
+  bool _isCenteredTriggeredByButton = false;
 
   void _centerOnUser() {
     if (_currentPos != null && mapboxMap != null) {
+      setState(() {
+        _isCentered = true;
+      });
+      _isCenteredTriggeredByButton = true;
+      
       mapboxMap!.flyTo(
         CameraOptions(
           center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
@@ -110,16 +117,29 @@ class _MapScreenState extends State<MapScreen> {
           bearing: _currentPos!.heading,
         ),
         MapAnimationOptions(duration: 1000),
-      );
+      ).then((_) {
+         Future.delayed(const Duration(milliseconds: 100), () {
+            _isCenteredTriggeredByButton = false;
+         });
+      });
     }
   }
 
   Future<void> _updateUserLocation(geo.Position position) async {
     _currentPos = position;
     
-    if (mapboxMap != null && !_hasCenteredInitially) {
-       _hasCenteredInitially = true;
-       _centerOnUser();
+    if (mapboxMap != null) {
+      if (!_hasCenteredInitially) {
+        _hasCenteredInitially = true;
+        _centerOnUser();
+      } else if (_isCentered && !_isCenteredTriggeredByButton) {
+        mapboxMap!.setCamera(
+          CameraOptions(
+            center: Point(coordinates: Position(position.longitude, position.latitude)),
+            bearing: position.heading,
+          ),
+        );
+      }
     }
   }
 
@@ -282,6 +302,11 @@ class _MapScreenState extends State<MapScreen> {
           MapWidget(
             key: const ValueKey("mapWidget"),
             onMapCreated: _onMapCreated,
+            onScrollListener: (_) {
+              if (_isCentered && !_isCenteredTriggeredByButton) {
+                setState(() => _isCentered = false);
+              }
+            },
             styleUri: _mapStyle,
             cameraOptions: CameraOptions(
               center: Point(coordinates: Position(24.0311, 49.8397)),
@@ -339,11 +364,18 @@ class _MapScreenState extends State<MapScreen> {
           Positioned(
             bottom: 150,
             right: 20,
-            child: FloatingActionButton(
-              heroTag: 'centerMapBtn',
-              backgroundColor: Colors.blueAccent,
-              onPressed: _centerOnUser,
-              child: const Icon(Icons.my_location, color: Colors.white),
+            child: AnimatedOpacity(
+              opacity: _isCentered ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 300),
+              child: IgnorePointer(
+                ignoring: _isCentered,
+                child: FloatingActionButton(
+                  heroTag: 'centerMapBtn',
+                  backgroundColor: Colors.blueAccent,
+                  onPressed: _centerOnUser,
+                  child: const Icon(Icons.my_location, color: Colors.white),
+                ),
+              ),
             ),
           ),
           

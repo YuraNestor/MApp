@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:sensors_plus/sensors_plus.dart';
 
 class SensorService {
@@ -7,23 +8,27 @@ class SensorService {
   // Roughness logic identical to the web app
   double roughness = 1;
   final int averageWindowSize = 15;
-  List<double> zHistory = [];
+  List<double> magHistory = [];
 
   Function(double)? onRoughnessChanged;
 
   void startTracking(double sensitivityMultiplier, double speedInfluenceMultiplier, double currentSpeedKmH) {
     _accelSubscription = userAccelerometerEventStream(samplingPeriod: const Duration(milliseconds: 20)).listen((UserAccelerometerEvent event) {
-      // Get vertical (Z-axis) acceleration
-      final z = event.z;
+      // Get magnitude of acceleration vector (X and Y only)
+      // We ignore Z-axis (forward/backward) so that braking/accelerating the car
+      // doesn't register as a bad road.
+      // Assumes phone is mounted in a standard dashboard orientation where
+      // Y is vertical (up/down bumps) and X is lateral (left/right sway).
+      final mag = math.sqrt(event.x * event.x + event.y * event.y);
       
-      zHistory.add(z);
-      if (zHistory.length > averageWindowSize) {
-        zHistory.removeAt(0);
+      magHistory.add(mag);
+      if (magHistory.length > averageWindowSize) {
+        magHistory.removeAt(0);
       }
 
-      // Calculate standard deviation of Z
-      double mean = zHistory.reduce((a, b) => a + b) / zHistory.length;
-      double variance = zHistory.map((val) => (val - mean) * (val - mean)).reduce((a, b) => a + b) / zHistory.length;
+      // Calculate standard deviation of magnitude
+      double mean = magHistory.reduce((a, b) => a + b) / magHistory.length;
+      double variance = magHistory.map((val) => (val - mean) * (val - mean)).reduce((a, b) => a + b) / magHistory.length;
       
       // Calculate speed factor
       // Base roughness heavily influenced by speed, higher speed dampens the raw shock reading
@@ -65,6 +70,6 @@ class SensorService {
   void stopTracking() {
     _accelSubscription?.cancel();
     _accelSubscription = null;
-    zHistory.clear();
+    magHistory.clear();
   }
 }
