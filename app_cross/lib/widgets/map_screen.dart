@@ -335,6 +335,18 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
           
+          // Center Location Button
+          Positioned(
+            bottom: 150,
+            right: 20,
+            child: FloatingActionButton(
+              heroTag: 'centerMapBtn',
+              backgroundColor: Colors.blueAccent,
+              onPressed: _centerOnUser,
+              child: const Icon(Icons.my_location, color: Colors.white),
+            ),
+          ),
+          
           // Bottom Overlay
           NavigationOverlay(
             isRecording: _isRecording,
