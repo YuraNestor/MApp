@@ -7,8 +7,18 @@ environment:
   sdk: ^3.11.0
 
 dependencies:
+  file_picker: ^10.3.10
   flutter:
     sdk: flutter
+  flutter_dotenv: ^5.2.1
+  geolocator: ^14.0.2
+  http: ^1.6.0
+  lucide_icons: ^0.257.0
+  mapbox_maps_flutter: ^2.19.1
+  path_provider: ^2.1.5
+  sensors_plus: ^7.0.0
+  share_plus: ^12.0.1
+  wakelock_plus: ^1.4.0
 
 dev_dependencies:
   flutter_test:
@@ -17,3 +27,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env
