@@ -88,38 +88,38 @@ class _MapScreenState extends State<MapScreen> {
 
   void _onMapCreated(MapboxMap mapboxMap) async {
     this.mapboxMap = mapboxMap;
+    // Enable the blue location puck
+    await mapboxMap.location.updateSettings(LocationComponentSettings(
+      enabled: true,
+      pulsingEnabled: true,
+      showAccuracyRing: true,
+    ));
+    
     pointAnnotationManager = await mapboxMap.annotations.createPointAnnotationManager();
     polylineAnnotationManager = await mapboxMap.annotations.createPolylineAnnotationManager();
+  }
+
+  bool _hasCenteredInitially = false;
+
+  void _centerOnUser() {
+    if (_currentPos != null && mapboxMap != null) {
+      mapboxMap!.flyTo(
+        CameraOptions(
+          center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
+          zoom: 15.0,
+          bearing: _currentPos!.heading,
+        ),
+        MapAnimationOptions(duration: 1000),
+      );
+    }
   }
 
   Future<void> _updateUserLocation(geo.Position position) async {
     _currentPos = position;
     
-    if (mapboxMap != null) {
-      // Move camera
-      mapboxMap!.flyTo(
-        CameraOptions(
-          center: Point(coordinates: Position(position.longitude, position.latitude)),
-          zoom: 15.0,
-          bearing: position.heading,
-        ),
-        MapAnimationOptions(duration: 1000),
-      );
-
-      // Update Marker
-      if (pointAnnotationManager != null) {
-        if (_userMarker != null) {
-          await pointAnnotationManager!.delete(_userMarker!);
-        }
-        
-        // In a real app we'd load an image, using default styling here
-        _userMarker = await pointAnnotationManager!.create(
-          PointAnnotationOptions(
-            geometry: Point(coordinates: Position(position.longitude, position.latitude)),
-            iconImage: 'custom-marker', // Needs to be loaded in style or use fallback
-          )
-        );
-      }
+    if (mapboxMap != null && !_hasCenteredInitially) {
+       _hasCenteredInitially = true;
+       _centerOnUser();
     }
   }
 
