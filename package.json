@@ -1,8 +1,0 @@
-{
-    "name": "mapp-monorepo",
-    "private": true,
-    "workspaces": [
-        "apps/*",
-        "packages/*"
-    ]
-}
