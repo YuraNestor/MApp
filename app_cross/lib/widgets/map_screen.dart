@@ -60,6 +60,7 @@ class _MapScreenState extends State<MapScreen> {
   bool _showRouteActions = false;
   bool _isDrivingMode = false;
   List<geo.Position> _currentRoutePoints = [];
+  Uint8List? _arrowImage;
 
   @override
   void initState() {
@@ -84,28 +85,32 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Future<void> _updateLocationPuck() async {
+    if (mapboxMap == null) return;
+    await mapboxMap!.location.updateSettings(LocationComponentSettings(
+      enabled: true,
+      pulsingEnabled: !_isDrivingMode,
+      showAccuracyRing: !_isDrivingMode,
+      puckBearing: PuckBearing.HEADING,
+      locationPuck: (_isDrivingMode && _arrowImage != null) ? LocationPuck(
+        locationPuck2D: LocationPuck2D(
+          bearingImage: _arrowImage!,
+        )
+      ) : null,
+    ));
+  }
+
   void _onMapCreated(MapboxMap mapboxMap) async {
     this.mapboxMap = mapboxMap;
-    Uint8List? arrowImage;
     try {
       final ByteData bytes = await rootBundle.load('assets/images/arrow.png');
-      arrowImage = bytes.buffer.asUint8List();
+      _arrowImage = bytes.buffer.asUint8List();
     } catch (e) {
       print("Could not load custom arrow: $e");
     }
 
     // Enable the location puck, overriding the blue dot with our custom arrow if available
-    await mapboxMap.location.updateSettings(LocationComponentSettings(
-      enabled: true,
-      pulsingEnabled: false,
-      showAccuracyRing: true,
-      puckBearing: PuckBearing.HEADING,
-      locationPuck: arrowImage != null ? LocationPuck(
-        locationPuck2D: LocationPuck2D(
-          bearingImage: arrowImage,
-        )
-      ) : null,
-    ));
+    await _updateLocationPuck();
     
     pointAnnotationManager = await mapboxMap.annotations.createPointAnnotationManager();
     polylineAnnotationManager = await mapboxMap.annotations.createPolylineAnnotationManager();
@@ -135,6 +140,8 @@ class _MapScreenState extends State<MapScreen> {
       _currentRoutePoints.clear();
       _isCentered = false;
     });
+    _updateLocationPuck();
+    
     if (polylineAnnotationManager != null && _routeLine != null) {
       await polylineAnnotationManager!.delete(_routeLine!);
       _routeLine = null;
@@ -163,6 +170,7 @@ class _MapScreenState extends State<MapScreen> {
       PointAnnotationOptions(
         geometry: Point(coordinates: Position(lng, lat)),
         image: markerImage,
+        iconSize: 3.0,
       )
     );
   }
@@ -399,6 +407,7 @@ class _MapScreenState extends State<MapScreen> {
          
          setState(() {
             _currentRoutePoints = linePoints;
+            _hasRoute = true;
          });
          
          _drawRouteLine(linePoints, Colors.blue);
@@ -590,7 +599,10 @@ class _MapScreenState extends State<MapScreen> {
               if (_isCentered && !_isCenteredTriggeredByButton) {
                 setState(() {
                    _isCentered = false;
-                   _isDrivingMode = false; // Breaking out of driving lock
+                   if (_isDrivingMode) {
+                      _isDrivingMode = false; // Breaking out of driving lock
+                      _updateLocationPuck();
+                   }
                 });
               }
             },
@@ -705,11 +717,6 @@ class _MapScreenState extends State<MapScreen> {
                right: 20,
                child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
-                  decoration: BoxDecoration(
-                     color: Colors.black87,
-                     borderRadius: BorderRadius.circular(20),
-                     border: Border.all(color: Colors.blueAccent.withOpacity(0.5))
-                  ),
                   child: Row(
                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                      children: [
@@ -735,6 +742,7 @@ class _MapScreenState extends State<MapScreen> {
                                    _isDrivingMode = true;
                                    _isCentered = true;
                                 });
+                                _updateLocationPuck();
                                 _centerOnUser();
                              },
                              icon: const Icon(Icons.navigation),
