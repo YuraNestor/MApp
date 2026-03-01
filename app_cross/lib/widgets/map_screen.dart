@@ -292,14 +292,20 @@ class _MapScreenState extends State<MapScreen> {
 
     List<CircleAnnotationOptions> optionsList = _recordedPoints.map((p) {
       Color pointColor;
-      if (p.roughness == 1) {
+      if (p.roughness == 1.0) {
         pointColor = Colors.green;
-      } else if (p.roughness == 2) {
+      } else if (p.roughness == 2.0) {
         pointColor = Colors.yellow;
-      } else if (p.roughness == 3) {
+      } else if (p.roughness == 3.0) {
         pointColor = Colors.orange;
-      } else {
+      } else if (p.roughness == 4.0) {
         pointColor = Colors.red;
+      } else {
+        // Fallback for older imports where roughness was the raw variance float instead of a bucket
+        if (p.roughness < 1.0) pointColor = Colors.green;
+        else if (p.roughness < 2.5) pointColor = Colors.yellow;
+        else if (p.roughness < 5.0) pointColor = Colors.orange;
+        else pointColor = Colors.red;
       }
 
       var hexColor = pointColor.value.toRadixString(16).padLeft(8, '0').substring(2);
