@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart' as geo;
+import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -85,11 +86,25 @@ class _MapScreenState extends State<MapScreen> {
 
   void _onMapCreated(MapboxMap mapboxMap) async {
     this.mapboxMap = mapboxMap;
-    // Enable the blue location puck
+    Uint8List? arrowImage;
+    try {
+      final ByteData bytes = await rootBundle.load('assets/images/arrow.png');
+      arrowImage = bytes.buffer.asUint8List();
+    } catch (e) {
+      print("Could not load custom arrow: $e");
+    }
+
+    // Enable the location puck, overriding the blue dot with our custom arrow if available
     await mapboxMap.location.updateSettings(LocationComponentSettings(
       enabled: true,
-      pulsingEnabled: true,
+      pulsingEnabled: false,
       showAccuracyRing: true,
+      puckBearing: PuckBearing.HEADING,
+      locationPuck: arrowImage != null ? LocationPuck(
+        locationPuck2D: LocationPuck2D(
+          bearingImage: arrowImage,
+        )
+      ) : null,
     ));
     
     pointAnnotationManager = await mapboxMap.annotations.createPointAnnotationManager();
@@ -124,6 +139,32 @@ class _MapScreenState extends State<MapScreen> {
       await polylineAnnotationManager!.delete(_routeLine!);
       _routeLine = null;
     }
+    if (pointAnnotationManager != null && _userMarker != null) {
+      await pointAnnotationManager!.delete(_userMarker!);
+      _userMarker = null;
+    }
+  }
+
+  void _drawDestinationMarker(double lat, double lng) async {
+    if (pointAnnotationManager == null) return;
+    
+    if (_userMarker != null) {
+      await pointAnnotationManager!.delete(_userMarker!);
+    }
+    Uint8List? markerImage;
+    try {
+      final ByteData bytes = await rootBundle.load('assets/images/marker.png');
+      markerImage = bytes.buffer.asUint8List();
+    } catch (e) {
+      print("Could not load custom marker: $e");
+    }
+
+    _userMarker = await pointAnnotationManager!.create(
+      PointAnnotationOptions(
+        geometry: Point(coordinates: Position(lng, lat)),
+        image: markerImage,
+      )
+    );
   }
 
   void _onMapLongClickListener(MapContentGestureContext context) {
@@ -135,9 +176,10 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _destinationName = "Dropped Pin (${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)})";
       _destination = GeolocatorPosition(latitude: lat, longitude: lng, timestamp: DateTime.now(), accuracy: 1, altitude: 1, altitudeAccuracy: 1, heading: 1, headingAccuracy: 1, speed: 1, speedAccuracy: 1);
+      _showRouteActions = true;
     });
     
-    _fetchRouteToDestination(lat, lng);
+    _drawDestinationMarker(lat, lng);
   }
 
   bool _hasCenteredInitially = false;
@@ -151,29 +193,33 @@ class _MapScreenState extends State<MapScreen> {
       });
       _isCenteredTriggeredByButton = true;
       
-      CameraOptions cameraOpts;
-      if (_isDrivingMode) {
-         cameraOpts = CameraOptions(
-           center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
-           bearing: _currentPos!.heading,
-           pitch: 60.0,
-           zoom: 17.0,
-         );
-      } else {
-         cameraOpts = CameraOptions(
-           center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
-           bearing: _currentPos!.heading,
-           zoom: 15.0,
-         );
-      }
-      
-      mapboxMap!.flyTo(
-        cameraOpts,
-        MapAnimationOptions(duration: 1000),
-      ).then((_) {
-         Future.delayed(const Duration(milliseconds: 100), () {
-            _isCenteredTriggeredByButton = false;
-         });
+      mapboxMap!.getCameraState().then((state) {
+          CameraOptions cameraOpts;
+          if (_isDrivingMode) {
+             cameraOpts = CameraOptions(
+               center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
+               bearing: _currentPos!.heading,
+               padding: MbxEdgeInsets(top: MediaQuery.of(context).size.height * 0.4, left: 0, bottom: 0, right: 0), // Shift puck downwards below center
+               pitch: 60.0,
+               zoom: 17.0,
+             );
+          } else {
+             cameraOpts = CameraOptions(
+               center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
+               bearing: _currentPos!.heading,
+               padding: MbxEdgeInsets(top: 0, left: 0, bottom: 0, right: 0),
+               zoom: state.zoom,
+             );
+          }
+          
+          mapboxMap!.flyTo(
+            cameraOpts,
+            MapAnimationOptions(duration: 1000),
+          ).then((_) {
+             Future.delayed(const Duration(milliseconds: 100), () {
+                _isCenteredTriggeredByButton = false;
+             });
+          });
       });
     }
   }
@@ -198,23 +244,28 @@ class _MapScreenState extends State<MapScreen> {
         _hasCenteredInitially = true;
         _centerOnUser();
       } else if (_isCentered && !_isCenteredTriggeredByButton) {
-        if (_isDrivingMode) {
-           mapboxMap!.setCamera(
-             CameraOptions(
-               center: Point(coordinates: Position(position.longitude, position.latitude)),
-               bearing: position.heading,
-               pitch: 60.0,
-               zoom: 17.0,
-             ),
-           );
-        } else {
-           mapboxMap!.setCamera(
-             CameraOptions(
-               center: Point(coordinates: Position(position.longitude, position.latitude)),
-               bearing: position.heading,
-             ),
-           );
-        }
+        mapboxMap!.getCameraState().then((state) {
+            if (_isDrivingMode) {
+               mapboxMap!.setCamera(
+                 CameraOptions(
+                   center: Point(coordinates: Position(position.longitude, position.latitude)),
+                   bearing: position.heading,
+                   padding: MbxEdgeInsets(top: MediaQuery.of(context).size.height * 0.4, left: 0, bottom: 0, right: 0),
+                   pitch: 60.0,
+                   zoom: 17.0,
+                 ),
+               );
+            } else {
+               mapboxMap!.setCamera(
+                 CameraOptions(
+                   center: Point(coordinates: Position(position.longitude, position.latitude)),
+                   bearing: position.heading,
+                   padding: MbxEdgeInsets(top: 0, left: 0, bottom: 0, right: 0),
+                   zoom: state.zoom,
+                 ),
+               );
+            }
+        });
       }
     }
   }
@@ -318,8 +369,10 @@ class _MapScreenState extends State<MapScreen> {
           setState(() {
             _destination = GeolocatorPosition(latitude: lat, longitude: lng, timestamp: DateTime.now(), accuracy: 1, altitude: 1, altitudeAccuracy: 1, heading: 1, headingAccuracy: 1, speed: 1, speedAccuracy: 1);
             _destinationName = name;
+            _hasRoute = true;
+            _showRouteActions = true;
           });
-          _fetchRouteToDestination(lat, lng);
+          _drawDestinationMarker(lat, lng);
         },
       ),
     );
@@ -346,8 +399,6 @@ class _MapScreenState extends State<MapScreen> {
          
          setState(() {
             _currentRoutePoints = linePoints;
-            _hasRoute = true;
-            _showRouteActions = true;
          });
          
          _drawRouteLine(linePoints, Colors.blue);
@@ -647,7 +698,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
           
           // Route Actions Panel
-          if (_hasRoute && _showRouteActions)
+          if (_showRouteActions && _destination != null)
             Positioned(
                bottom: 130,
                left: 20,
@@ -662,34 +713,37 @@ class _MapScreenState extends State<MapScreen> {
                   child: Row(
                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                      children: [
-                        ElevatedButton.icon(
-                           onPressed: () {
-                              setState(() => _showRouteActions = false);
-                              _zoomToBounds(_currentRoutePoints);
-                           },
-                           icon: const Icon(Icons.map),
-                           label: const Text('Show Route'),
-                           style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white10,
-                              foregroundColor: Colors.white,
-                           ),
-                        ),
-                        ElevatedButton.icon(
-                           onPressed: () {
-                              setState(() {
-                                 _showRouteActions = false;
-                                 _isDrivingMode = true;
-                                 _isCentered = true;
-                              });
-                              _centerOnUser();
-                           },
-                           icon: const Icon(Icons.navigation),
-                           label: const Text('Start Drive'),
-                           style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent,
-                              foregroundColor: Colors.white,
-                           ),
-                        ),
+                        if (!_hasRoute)
+                          ElevatedButton.icon(
+                             onPressed: () {
+                                if (_destination != null) {
+                                   _fetchRouteToDestination(_destination!.latitude, _destination!.longitude);
+                                }
+                             },
+                             icon: const Icon(Icons.map),
+                             label: const Text('Show Route'),
+                             style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white10,
+                                foregroundColor: Colors.white,
+                             ),
+                          ),
+                        if (_hasRoute)
+                          ElevatedButton.icon(
+                             onPressed: () {
+                                setState(() {
+                                   _showRouteActions = false;
+                                   _isDrivingMode = true;
+                                   _isCentered = true;
+                                });
+                                _centerOnUser();
+                             },
+                             icon: const Icon(Icons.navigation),
+                             label: const Text('Start Drive'),
+                             style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blueAccent,
+                                foregroundColor: Colors.white,
+                             ),
+                          ),
                      ],
                   ),
                ),
