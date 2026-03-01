@@ -16,8 +16,8 @@
     "@types/react-map-gl": "^6.1.8",
     "lucide-react": "^0.564.0",
     "maplibre-gl": "^5.18.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "react-map-gl": "^8.1.0"
   },
   "devDependencies": {

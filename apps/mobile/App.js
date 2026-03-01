@@ -3,8 +3,8 @@ import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
 import { getDistance, getColorFromRoughness, getPerpendicularDist } from '@mapp/shared';
 
-// Initialize Mapbox with Mapbox backend
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN || 'sk-placeholder');
+// Initialize Mapbox with MapLibre backend (no token required for open styles, sk-placeholder is used in app.json)
+Mapbox.setAccessToken('sk-placeholder');
 
 export default function App() {
   const [routeGeometry, setRouteGeometry] = useState(null);
@@ -35,7 +35,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Mapbox.MapView style={styles.map} styleURL={Mapbox.StyleURL.Dark}>
+      <Mapbox.MapView style={styles.map} styleURL="https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json">
         <Mapbox.Camera
           zoomLevel={14}
           centerCoordinate={[30.5234, 50.4501]} // Kyiv
