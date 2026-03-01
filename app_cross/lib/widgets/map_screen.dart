@@ -8,7 +8,6 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 
 import 'dart:math' as math;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../services/location_service.dart';
 import '../services/sensor_service.dart';
@@ -56,6 +55,10 @@ class _MapScreenState extends State<MapScreen> {
   // Destination
   geo.Position? _destination;
   String? _destinationName;
+  bool _hasRoute = false;
+  bool _showRouteActions = false;
+  bool _isDrivingMode = false;
+  List<geo.Position> _currentRoutePoints = [];
 
   @override
   void initState() {
@@ -93,6 +96,48 @@ class _MapScreenState extends State<MapScreen> {
     polylineAnnotationManager = await mapboxMap.annotations.createPolylineAnnotationManager();
     polygonAnnotationManager = await mapboxMap.annotations.createPolygonAnnotationManager();
     circleAnnotationManager = await mapboxMap.annotations.createCircleAnnotationManager();
+    
+    mapboxMap.gestures.getSettings().then((settings) {
+       mapboxMap.gestures.updateSettings(
+          GesturesSettings(
+             rotateEnabled: true,
+             pitchEnabled: true,
+          )
+       );
+    });
+    
+    // Attach gesture listeners
+    mapboxMap.addInteraction(LongTapInteraction.onMap(_onMapLongClickListener));
+  }
+
+  void _cancelRoute() async {
+    setState(() {
+      _destination = null;
+      _destinationName = null;
+      _hasRoute = false;
+      _isDrivingMode = false;
+      _showRouteActions = false;
+      _currentRoutePoints.clear();
+      _isCentered = false;
+    });
+    if (polylineAnnotationManager != null && _routeLine != null) {
+      await polylineAnnotationManager!.delete(_routeLine!);
+      _routeLine = null;
+    }
+  }
+
+  void _onMapLongClickListener(MapContentGestureContext context) {
+    if (_isRecording) return; // Prevent routing disruptions while actively scanning roads
+    
+    double lat = context.point.coordinates.lat as double;
+    double lng = context.point.coordinates.lng as double;
+
+    setState(() {
+      _destinationName = "Dropped Pin (${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)})";
+      _destination = GeolocatorPosition(latitude: lat, longitude: lng, timestamp: DateTime.now(), accuracy: 1, altitude: 1, altitudeAccuracy: 1, heading: 1, headingAccuracy: 1, speed: 1, speedAccuracy: 1);
+    });
+    
+    _fetchRouteToDestination(lat, lng);
   }
 
   bool _hasCenteredInitially = false;
@@ -106,12 +151,24 @@ class _MapScreenState extends State<MapScreen> {
       });
       _isCenteredTriggeredByButton = true;
       
+      CameraOptions cameraOpts;
+      if (_isDrivingMode) {
+         cameraOpts = CameraOptions(
+           center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
+           bearing: _currentPos!.heading,
+           pitch: 60.0,
+           zoom: 17.0,
+         );
+      } else {
+         cameraOpts = CameraOptions(
+           center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
+           bearing: _currentPos!.heading,
+           zoom: 15.0,
+         );
+      }
+      
       mapboxMap!.flyTo(
-        CameraOptions(
-          center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
-          zoom: 15.0,
-          bearing: _currentPos!.heading,
-        ),
+        cameraOpts,
         MapAnimationOptions(duration: 1000),
       ).then((_) {
          Future.delayed(const Duration(milliseconds: 100), () {
@@ -141,12 +198,23 @@ class _MapScreenState extends State<MapScreen> {
         _hasCenteredInitially = true;
         _centerOnUser();
       } else if (_isCentered && !_isCenteredTriggeredByButton) {
-        mapboxMap!.setCamera(
-          CameraOptions(
-            center: Point(coordinates: Position(position.longitude, position.latitude)),
-            bearing: position.heading,
-          ),
-        );
+        if (_isDrivingMode) {
+           mapboxMap!.setCamera(
+             CameraOptions(
+               center: Point(coordinates: Position(position.longitude, position.latitude)),
+               bearing: position.heading,
+               pitch: 60.0,
+               zoom: 17.0,
+             ),
+           );
+        } else {
+           mapboxMap!.setCamera(
+             CameraOptions(
+               center: Point(coordinates: Position(position.longitude, position.latitude)),
+               bearing: position.heading,
+             ),
+           );
+        }
       }
     }
   }
@@ -276,11 +344,58 @@ class _MapScreenState extends State<MapScreen> {
             return geo.Position(longitude: coord[0], latitude: coord[1], timestamp: DateTime.now(), accuracy: 1, altitude: 1, altitudeAccuracy: 1, heading: 1, headingAccuracy: 1, speed: 1, speedAccuracy: 1); // GeoJSON is Long, Lat
          }).toList();
          
+         setState(() {
+            _currentRoutePoints = linePoints;
+            _hasRoute = true;
+            _showRouteActions = true;
+         });
+         
          _drawRouteLine(linePoints, Colors.blue);
+         _zoomToBounds(linePoints);
        }
     } catch (e) {
       print("Routing error: $e");
     }
+  }
+
+  void _zoomToBounds(List<geo.Position> routeParams) {
+     if (mapboxMap == null || routeParams.isEmpty) return;
+     
+     double minLat = routeParams.first.latitude;
+     double maxLat = routeParams.first.latitude;
+     double minLng = routeParams.first.longitude;
+     double maxLng = routeParams.first.longitude;
+     
+     for (var p in routeParams) {
+        if (p.latitude < minLat) minLat = p.latitude;
+        if (p.latitude > maxLat) maxLat = p.latitude;
+        if (p.longitude < minLng) minLng = p.longitude;
+        if (p.longitude > maxLng) maxLng = p.longitude;
+     }
+     
+     // Include user current position in bounds
+     if (_currentPos != null) {
+        if (_currentPos!.latitude < minLat) minLat = _currentPos!.latitude;
+        if (_currentPos!.latitude > maxLat) maxLat = _currentPos!.latitude;
+        if (_currentPos!.longitude < minLng) minLng = _currentPos!.longitude;
+        if (_currentPos!.longitude > maxLng) maxLng = _currentPos!.longitude;
+     }
+
+     mapboxMap!.cameraForCoordinateBounds(
+        CoordinateBounds(
+           southwest: Point(coordinates: Position(minLng, minLat)),
+           northeast: Point(coordinates: Position(maxLng, maxLat)),
+           infiniteBounds: true,
+        ),
+        MbxEdgeInsets(top: 100.0, left: 50.0, bottom: 250.0, right: 50.0),
+        null,
+        null,
+        null,
+        null,
+     ).then((cameraOpts) {
+        mapboxMap!.flyTo(cameraOpts, MapAnimationOptions(duration: 1000));
+        setState(() => _isCentered = false);
+     });
   }
 
   void _updateRouteLine() {
@@ -422,7 +537,10 @@ class _MapScreenState extends State<MapScreen> {
             onMapCreated: _onMapCreated,
             onScrollListener: (_) {
               if (_isCentered && !_isCenteredTriggeredByButton) {
-                setState(() => _isCentered = false);
+                setState(() {
+                   _isCentered = false;
+                   _isDrivingMode = false; // Breaking out of driving lock
+                });
               }
             },
             styleUri: _mapStyle,
@@ -448,31 +566,54 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
                 Expanded(
-                  child: GestureDetector(
-                    onTap: _openSearch,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.search, color: Colors.grey, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _destinationName ?? 'Search destination...',
-                              style: const TextStyle(color: Colors.grey, fontSize: 16),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                  child: (_hasRoute || _destinationName != null)
+                      ? GestureDetector(
+                          onTap: _cancelRoute,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.8),
+                              borderRadius: BorderRadius.circular(30),
                             ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.close, color: Colors.white, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Cancel Route',
+                                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                )
+                              ],
+                            ),
+                          ),
+                        )
+                      : GestureDetector(
+                          onTap: _openSearch,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.search, color: Colors.grey, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _destinationName ?? 'Search destination...',
+                                    style: const TextStyle(color: Colors.grey, fontSize: 16),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                        ),
                 )
               ],
             ),
@@ -480,10 +621,10 @@ class _MapScreenState extends State<MapScreen> {
           
           // Center Location Button
           Positioned(
-            bottom: 150,
+            bottom: _hasRoute ? 250 : 150,
             right: 20,
             child: AnimatedOpacity(
-              opacity: _isCentered ? 0.0 : 1.0,
+              opacity: _isCentered && !_isDrivingMode ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 300),
               child: IgnorePointer(
                 ignoring: _isCentered,
@@ -504,6 +645,55 @@ class _MapScreenState extends State<MapScreen> {
             currentSpeedKmH: _currentSpeedKmH,
             onRecordToggle: _toggleRecording,
           ),
+          
+          // Route Actions Panel
+          if (_hasRoute && _showRouteActions)
+            Positioned(
+               bottom: 130,
+               left: 20,
+               right: 20,
+               child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
+                  decoration: BoxDecoration(
+                     color: Colors.black87,
+                     borderRadius: BorderRadius.circular(20),
+                     border: Border.all(color: Colors.blueAccent.withOpacity(0.5))
+                  ),
+                  child: Row(
+                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                     children: [
+                        ElevatedButton.icon(
+                           onPressed: () {
+                              setState(() => _showRouteActions = false);
+                              _zoomToBounds(_currentRoutePoints);
+                           },
+                           icon: const Icon(Icons.map),
+                           label: const Text('Show Route'),
+                           style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white10,
+                              foregroundColor: Colors.white,
+                           ),
+                        ),
+                        ElevatedButton.icon(
+                           onPressed: () {
+                              setState(() {
+                                 _showRouteActions = false;
+                                 _isDrivingMode = true;
+                                 _isCentered = true;
+                              });
+                              _centerOnUser();
+                           },
+                           icon: const Icon(Icons.navigation),
+                           label: const Text('Start Drive'),
+                           style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              foregroundColor: Colors.white,
+                           ),
+                        ),
+                     ],
+                  ),
+               ),
+            ),
         ],
       ),
     );

@@ -13,21 +13,20 @@ Analyzing app_cross...
    info - 'Share' is deprecated and shouldn't be used. Use SharePlus instead - lib\services\data_service.dart:66:16 - deprecated_member_use
    info - 'shareXFiles' is deprecated and shouldn't be used. Use SharePlus.instance.share() instead - lib\services\data_service.dart:66:22 - deprecated_member_use
    info - Don't invoke 'print' in production code - lib\services\data_service.dart:69:7 - avoid_print
-   info - The private field _recordedPoints could be 'final' - lib\widgets\map_screen.dart:49:19 - prefer_final_fields
-warning - The value of the field '_userMarker' isn't used - lib\widgets\map_screen.dart:51:20 - unused_field
-warning - The value of the field '_destination' isn't used - lib\widgets\map_screen.dart:55:17 - unused_field
-   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:77:7 - avoid_print
-  error - Undefined name 'polygonAnnotationManager' - lib\widgets\map_screen.dart:92:5 - undefined_identifier
-   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:238:7 - avoid_print
-   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:279:7 - avoid_print
-  error - Undefined name 'polygonAnnotationManager' - lib\widgets\map_screen.dart:315:9 - undefined_identifier
-  error - Undefined name 'polygonAnnotationManager' - lib\widgets\map_screen.dart:320:15 - undefined_identifier
-   info - 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion - lib\widgets\map_screen.dart:350:35 - deprecated_member_use
-  error - Undefined name 'polygonAnnotationManager' - lib\widgets\map_screen.dart:359:41 - undefined_identifier
-   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:361:7 - avoid_print
-   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:362:7 - avoid_print
-   info - 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion - lib\widgets\map_screen.dart:373:27 - deprecated_member_use
-   info - Constructors in '@immutable' classes should be declared as 'const' - lib\widgets\map_screen.dart:496:4 - prefer_const_constructors_in_immutables
+warning - Unused import: 'package:flutter_dotenv/flutter_dotenv.dart' - lib\widgets\map_screen.dart:11:8 - unused_import
+   info - The private field _recordedPoints could be 'final' - lib\widgets\map_screen.dart:51:19 - prefer_final_fields
+warning - The value of the field '_userMarker' isn't used - lib\widgets\map_screen.dart:53:20 - unused_field
+warning - The value of the field '_destination' isn't used - lib\widgets\map_screen.dart:57:17 - unused_field
+   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:82:7 - avoid_print
+  error - The method 'addOnMapLongClickListener' isn't defined for the type 'GesturesSettingsInterface' - lib\widgets\map_screen.dart:110:24 - undefined_method
+   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:281:7 - avoid_print
+   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:328:7 - avoid_print
+   info - 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion - lib\widgets\map_screen.dart:447:35 - deprecated_member_use
+   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:466:7 - avoid_print
+   info - Don't invoke 'print' in production code - lib\widgets\map_screen.dart:467:7 - avoid_print
+   info - 'value' is deprecated and shouldn't be used. Use component accessors like .r or .g, or toARGB32 for an explicit conversion - lib\widgets\map_screen.dart:478:27 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\map_screen.dart:608:66 - deprecated_member_use
+   info - Constructors in '@immutable' classes should be declared as 'const' - lib\widgets\map_screen.dart:649:4 - prefer_const_constructors_in_immutables
    info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\navigation_overlay.dart:34:31 - deprecated_member_use
    info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\navigation_overlay.dart:38:35 - deprecated_member_use
    info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\navigation_overlay.dart:94:69 - deprecated_member_use
