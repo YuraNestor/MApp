@@ -12,7 +12,7 @@ class SensorService {
 
   Function(double)? onRoughnessChanged;
 
-  void startTracking(double sensitivityMultiplier, double speedInfluenceMultiplier, double currentSpeedKmH) {
+  void startTracking() {
     _accelSubscription = userAccelerometerEventStream(samplingPeriod: const Duration(milliseconds: 20)).listen((UserAccelerometerEvent event) {
       // Get magnitude of acceleration vector (X and Y only)
       // We ignore Z-axis (forward/backward) so that braking/accelerating the car
@@ -30,38 +30,15 @@ class SensorService {
       double mean = magHistory.reduce((a, b) => a + b) / magHistory.length;
       double variance = magHistory.map((val) => (val - mean) * (val - mean)).reduce((a, b) => a + b) / magHistory.length;
       
-      // Calculate speed factor
-      // Base roughness heavily influenced by speed, higher speed dampens the raw shock reading
-      double speedFactor = 1.0;
-      if (currentSpeedKmH > 20) {
-          speedFactor = 20 / currentSpeedKmH; 
-      }
+      // Calculate final raw scaled roughness
+      double calculatedRoughness = variance.clamp(0.0, 50.0);
       
-      // Speed multiplier from user settings
-      double speedMultiplier = 1.0 + ((speedInfluenceMultiplier - 1.0) * (1.0 - speedFactor));
+      double finalRoughness = calculatedRoughness.clamp(0.0, 10.0);
 
-      // Calculate final scaled roughness index (1-4 expected range)
-      double calculatedRoughness = (variance * sensitivityMultiplier * speedMultiplier).clamp(0.0, 50.0);
-      
-      // Determine bucket based on web logic:
-      // roughness < 1.0 => 1 (Green/Good)
-      // roughness < 2.5 => 2 (Yellow/Fair)
-      // roughness < 5.0 => 3 (Orange/Poor)
-      // roughness >= 5.0 => 4 (Red/Bad)
-      
-      double roughnessClass = 1;
-      if (calculatedRoughness < 1.0) {
-        roughnessClass = 1;
-      } else if (calculatedRoughness < 2.5) {
-        roughnessClass = 2;
-      } else if (calculatedRoughness < 5.0) {
-        roughnessClass = 3;
-      } else {
-        roughnessClass = 4;
-      }
-
-      if (roughnessClass != roughness) {
-        roughness = roughnessClass;
+      // Only notify if the change is significant (e.g., > 0.2) to prevent
+      // excessive setState calls and UI rebuilds at 50fps.
+      if ((finalRoughness - roughness).abs() > 0.2) {
+        roughness = finalRoughness;
         onRoughnessChanged?.call(roughness);
       }
     });

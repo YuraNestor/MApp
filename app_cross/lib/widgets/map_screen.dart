@@ -155,7 +155,7 @@ class _MapScreenState extends State<MapScreen> {
       if (_isRecording) {
         WakelockPlus.enable();
         // Removed _recordedPoints.clear() to keep previously recorded points on map
-        _sensorService.startTracking(_sensitivityMultiplier, _speedInfluenceMultiplier, _currentSpeedKmH);
+        _sensorService.startTracking();
       } else {
         WakelockPlus.disable();
         _sensorService.stopTracking();
@@ -163,23 +163,30 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
-  void _openSettings() {
-    showDialog(
+  Future<void> _openSettings() async {
+    await showDialog(
       context: context,
       builder: (ctx) => SettingsDialog(
         sensitivityMultiplier: _sensitivityMultiplier,
         speedInfluenceMultiplier: _speedInfluenceMultiplier,
         currentStyle: _mapStyle,
-        onSensitivityChanged: (v) => _sensitivityMultiplier = v,
-        onSpeedInfluenceChanged: (v) => _speedInfluenceMultiplier = v,
+        onSensitivityChanged: (v) {
+          _sensitivityMultiplier = v;
+        },
+        onSpeedInfluenceChanged: (v) {
+          _speedInfluenceMultiplier = v;
+        },
         onStyleChanged: (style) {
           setState(() => _mapStyle = style);
-          // When style changes, recreate the map widget (or use Mapbox style loading APIs)
+          mapboxMap?.loadStyleURI(style);
         },
         onExport: () => _dataService.exportCsv(_recordedPoints),
         onImport: _importData,
       ),
     );
+    
+    // Trigger map redraw once the dialog closes
+    _updateRouteLine();
   }
 
   Future<void> _importData() async {
@@ -284,42 +291,53 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _drawRecordedPoints() async {
     if (circleAnnotationManager == null) return;
 
-    // Clear existing points
-    if (_recordedPointAnnotations.isNotEmpty) {
-      await circleAnnotationManager!.deleteAll();
-      _recordedPointAnnotations.clear();
-    }
-
-    List<CircleAnnotationOptions> optionsList = _recordedPoints.map((p) {
-      Color pointColor;
-      if (p.roughness == 1.0) {
-        pointColor = Colors.green;
-      } else if (p.roughness == 2.0) {
-        pointColor = Colors.yellow;
-      } else if (p.roughness == 3.0) {
-        pointColor = Colors.orange;
-      } else if (p.roughness == 4.0) {
-        pointColor = Colors.red;
-      } else {
-        // Fallback for older imports where roughness was the raw variance float instead of a bucket
-        if (p.roughness < 1.0) pointColor = Colors.green;
-        else if (p.roughness < 2.5) pointColor = Colors.yellow;
-        else if (p.roughness < 5.0) pointColor = Colors.orange;
-        else pointColor = Colors.red;
+    try {
+      // Clear existing points
+      if (_recordedPointAnnotations.isNotEmpty) {
+        await circleAnnotationManager!.deleteAll();
+        _recordedPointAnnotations = [];
       }
 
-      var hexColor = pointColor.value.toRadixString(16).padLeft(8, '0').substring(2);
+      if (_recordedPoints.isEmpty) return;
 
-      return CircleAnnotationOptions(
-        geometry: Point(coordinates: Position(p.lng, p.lat)),
-        circleColor: int.parse('FF$hexColor', radix: 16),
-        circleRadius: 6.0,
-        circleStrokeWidth: 1.0,
-        circleStrokeColor: 0xFFFFFFFF, // white border
-      );
-    }).toList();
+      List<CircleAnnotationOptions> optionsList = _recordedPoints.map((p) {
+        // Calculate speed factor
+        double speedFactor = 1.0;
+        if (p.speed > 20) {
+            speedFactor = 20 / p.speed; 
+        }
+        
+        // Speed multiplier from user settings
+        double speedMultiplier = 1.0 + ((_speedInfluenceMultiplier - 1.0) * (1.0 - speedFactor));
 
-    _recordedPointAnnotations = await circleAnnotationManager!.createMulti(optionsList);
+        // Custom Red-Green Gradient algorithm
+        double adjustedRoughness = p.roughness * _sensitivityMultiplier * speedMultiplier;
+        double clampedRoughness = adjustedRoughness.clamp(0.0, 10.0);
+        int r, g;
+        
+        if (clampedRoughness <= 5) {
+          g = 255;
+          r = ((clampedRoughness / 5.0) * 255.0).round();
+        } else {
+          r = 255;
+          g = ((1.0 - ((clampedRoughness - 5.0) / 5.0)) * 255.0).round();
+        }
+        
+        Color pointColor = Color.fromARGB(255, r, g, 0);
+        var hexColor = pointColor.value.toRadixString(16).padLeft(8, '0').substring(2);
+
+        return CircleAnnotationOptions(
+          geometry: Point(coordinates: Position(p.lng, p.lat)),
+          circleColor: int.parse('FF$hexColor', radix: 16),
+          circleRadius: 6.0,
+        );
+      }).toList();
+
+      _recordedPointAnnotations = await circleAnnotationManager!.createMulti(optionsList);
+    } catch (e, stacktrace) {
+      print("Error in _drawRecordedPoints: $e");
+      print(stacktrace);
+    }
   }
   
   Future<void> _drawRouteLine(List<geo.Position> points, Color color) async {

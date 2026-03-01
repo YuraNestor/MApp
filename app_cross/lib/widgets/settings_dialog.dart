@@ -29,12 +29,14 @@ class SettingsDialog extends StatefulWidget {
 class _SettingsDialogState extends State<SettingsDialog> {
   late double _sensitivity;
   late double _speedInfluence;
+  late String _currentStyle;
 
   @override
   void initState() {
     super.initState();
     _sensitivity = widget.sensitivityMultiplier;
     _speedInfluence = widget.speedInfluenceMultiplier;
+    _currentStyle = widget.currentStyle;
   }
 
   @override
@@ -167,9 +169,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   Widget _styleButton(String label, String url) {
-    bool isSelected = widget.currentStyle == url;
+    bool isSelected = _currentStyle == url;
     return GestureDetector(
-      onTap: () => widget.onStyleChanged(url),
+      onTap: () {
+        setState(() => _currentStyle = url);
+        widget.onStyleChanged(url);
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
