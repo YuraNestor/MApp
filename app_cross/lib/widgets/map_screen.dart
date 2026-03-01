@@ -380,10 +380,16 @@ class _MapScreenState extends State<MapScreen> {
           setState(() {
             _destination = GeolocatorPosition(latitude: lat, longitude: lng, timestamp: DateTime.now(), accuracy: 1, altitude: 1, altitudeAccuracy: 1, heading: 1, headingAccuracy: 1, speed: 1, speedAccuracy: 1);
             _destinationName = name;
-            _hasRoute = true;
             _showRouteActions = true;
+            if(_destination!=null){
+              _isCentered = false;
+              _updateUserLocation(_destination!);
+            }
+
           });
           _drawDestinationMarker(lat, lng);
+
+
         },
       ),
     );
@@ -615,7 +621,7 @@ class _MapScreenState extends State<MapScreen> {
                 _updateUserLocation(_currentPos!);
               }
             },
-            
+
             styleUri: _mapStyle,
             cameraOptions: CameraOptions(
               center: Point(coordinates: Position(24.0311, 49.8397)),
