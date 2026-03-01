@@ -178,7 +178,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _onMapLongClickListener(MapContentGestureContext context) {
-    if (_isRecording) return; // Prevent routing disruptions while actively scanning roads
+    if (_hasRoute) return; 
     
     double lat = context.point.coordinates.lat as double;
     double lng = context.point.coordinates.lng as double;
@@ -209,15 +209,16 @@ class _MapScreenState extends State<MapScreen> {
              cameraOpts = CameraOptions(
                center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
                bearing: _currentPos!.heading,
-               padding: MbxEdgeInsets(top: MediaQuery.of(context).size.height * 0.4, left: 0, bottom: 0, right: 0), // Shift puck downwards below center
+               padding: MbxEdgeInsets(top: MediaQuery.of(context).size.height * 0.6, left: 0, bottom: 0, right: 0), // Shift puck downwards below center
                pitch: 60.0,
-               zoom: 17.0,
+               zoom: 20.0,
              );
           } else {
              cameraOpts = CameraOptions(
                center: Point(coordinates: Position(_currentPos!.longitude, _currentPos!.latitude)),
-               bearing: _currentPos!.heading,
+               bearing: 0,
                padding: MbxEdgeInsets(top: 0, left: 0, bottom: 0, right: 0),
+               pitch: 0,
                zoom: state.zoom,
              );
           }
@@ -260,16 +261,16 @@ class _MapScreenState extends State<MapScreen> {
                  CameraOptions(
                    center: Point(coordinates: Position(position.longitude, position.latitude)),
                    bearing: position.heading,
-                   padding: MbxEdgeInsets(top: MediaQuery.of(context).size.height * 0.4, left: 0, bottom: 0, right: 0),
+                   padding: MbxEdgeInsets(top: MediaQuery.of(context).size.height * 0.6, left: 0, bottom: 0, right: 0),
                    pitch: 60.0,
-                   zoom: 17.0,
+                   zoom: state.zoom,
                  ),
                );
             } else {
                mapboxMap!.setCamera(
                  CameraOptions(
                    center: Point(coordinates: Position(position.longitude, position.latitude)),
-                   bearing: position.heading,
+                   bearing: 0,
                    padding: MbxEdgeInsets(top: 0, left: 0, bottom: 0, right: 0),
                    zoom: state.zoom,
                  ),
@@ -602,12 +603,19 @@ class _MapScreenState extends State<MapScreen> {
                 setState(() {
                    _isCentered = false;
                    if (_isDrivingMode) {
-                      _isDrivingMode = false; // Breaking out of driving lock
-                      _updateLocationPuck();
+                      //_isDrivingMode = false; // Breaking out of driving lock
+                      //_updateLocationPuck();
                    }
                 });
               }
             },
+
+            onZoomListener: (zoomInfo) {
+              if(_currentPos!=null){
+                _updateUserLocation(_currentPos!);
+              }
+            },
+            
             styleUri: _mapStyle,
             cameraOptions: CameraOptions(
               center: Point(coordinates: Position(24.0311, 49.8397)),
@@ -689,7 +697,7 @@ class _MapScreenState extends State<MapScreen> {
             bottom: _hasRoute ? 250 : 150,
             right: 20,
             child: AnimatedOpacity(
-              opacity: _isCentered && !_isDrivingMode ? 0.0 : 1.0,
+              opacity: _isCentered ? 0.0 : 1.0,
               duration: const Duration(milliseconds: 300),
               child: IgnorePointer(
                 ignoring: _isCentered,
