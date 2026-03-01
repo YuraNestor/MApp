@@ -69,15 +69,6 @@ class _MapScreenState extends State<MapScreen> {
 
       _sensorService.onRoughnessChanged = (val) {
         setState(() => _currentRoughness = val);
-        if (_isRecording && _currentPos != null) {
-          _recordedPoints.add(PointData(
-            lat: _currentPos!.latitude,
-            lng: _currentPos!.longitude,
-            roughness: _currentRoughness,
-            time: DateTime.now().toIso8601String(),
-          ));
-          _updateRouteLine();
-        }
       };
 
       setState(() => _isInit = true);
@@ -85,6 +76,8 @@ class _MapScreenState extends State<MapScreen> {
       print("Init error: $e");
     }
   }
+
+  CircleAnnotationManager? circleAnnotationManager;
 
   void _onMapCreated(MapboxMap mapboxMap) async {
     this.mapboxMap = mapboxMap;
@@ -97,6 +90,7 @@ class _MapScreenState extends State<MapScreen> {
     
     pointAnnotationManager = await mapboxMap.annotations.createPointAnnotationManager();
     polylineAnnotationManager = await mapboxMap.annotations.createPolylineAnnotationManager();
+    circleAnnotationManager = await mapboxMap.annotations.createCircleAnnotationManager();
   }
 
   bool _hasCenteredInitially = false;
@@ -128,6 +122,18 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _updateUserLocation(geo.Position position) async {
     _currentPos = position;
     
+    if (_isRecording) {
+      _recordedPoints.add(PointData(
+         timestamp: DateTime.now().toIso8601String(),
+         lat: position.latitude,
+         lng: position.longitude,
+         roughness: _currentRoughness,
+         speed: _currentSpeedKmH,
+         heading: position.heading,
+      ));
+      _updateRouteLine();
+    }
+    
     if (mapboxMap != null) {
       if (!_hasCenteredInitially) {
         _hasCenteredInitially = true;
@@ -148,7 +154,7 @@ class _MapScreenState extends State<MapScreen> {
       _isRecording = !_isRecording;
       if (_isRecording) {
         WakelockPlus.enable();
-        _recordedPoints.clear();
+        // Removed _recordedPoints.clear() to keep previously recorded points on map
         _sensorService.startTracking(_sensitivityMultiplier, _speedInfluenceMultiplier, _currentSpeedKmH);
       } else {
         WakelockPlus.disable();
@@ -168,15 +174,15 @@ class _MapScreenState extends State<MapScreen> {
         onSpeedInfluenceChanged: (v) => _speedInfluenceMultiplier = v,
         onStyleChanged: (style) {
           setState(() => _mapStyle = style);
-          mapboxMap?.loadStyleURI(style);
+          // When style changes, recreate the map widget (or use Mapbox style loading APIs)
         },
         onExport: () => _dataService.exportCsv(_recordedPoints),
-        onImport: _importCsv,
+        onImport: _importData,
       ),
     );
   }
 
-  Future<void> _importCsv() async {
+  Future<void> _importData() async {
      try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -194,18 +200,31 @@ class _MapScreenState extends State<MapScreen> {
         for (int i = 1; i < lines.length; i++) {
           if (lines[i].trim().isEmpty) continue;
           List<String> parts = lines[i].split(',');
-          if (parts.length >= 4) {
+          // Expected format: timestamp,lat,lng,roughness,speed,heading
+          if (parts.length >= 6) {
              newPoints.add(PointData(
-               lat: double.parse(parts[0]),
-               lng: double.parse(parts[1]),
-               roughness: double.parse(parts[2]),
-               time: parts[3]
+               timestamp: parts[0],
+               lat: double.tryParse(parts[1]) ?? 0.0,
+               lng: double.tryParse(parts[2]) ?? 0.0,
+               roughness: double.tryParse(parts[3]) ?? 1.0,
+               speed: double.tryParse(parts[4]) ?? 0.0,
+               heading: double.tryParse(parts[5]) ?? 0.0,
+             ));
+          } else if (parts.length >= 4) {
+             // Fallback for older CSV format without speed/heading
+             newPoints.add(PointData(
+               timestamp: parts[3],
+               lat: double.tryParse(parts[0]) ?? 0.0,
+               lng: double.tryParse(parts[1]) ?? 0.0,
+               roughness: double.tryParse(parts[2]) ?? 1.0,
+               speed: 0.0,
+               heading: 0.0,
              ));
           }
         }
         
         setState(() {
-          _recordedPoints = newPoints;
+          _recordedPoints.addAll(newPoints); // Append imported points to existing layout
         });
         _updateRouteLine();
       }
@@ -257,11 +276,44 @@ class _MapScreenState extends State<MapScreen> {
 
   void _updateRouteLine() {
     if (_recordedPoints.isEmpty) return;
-    List<geo.Position> linePoints = _recordedPoints.map((p) => geo.Position(longitude: p.lng, latitude: p.lat, timestamp: DateTime.now(), accuracy: 1, altitude: 1, altitudeAccuracy: 1, heading: 1, headingAccuracy: 1, speed: 1, speedAccuracy: 1)).toList();
-    // For simplicity, drawing the whole line as green during recording. 
-    // In a full implementation, this would be a LineLayer with a feature collection 
-    // to support multi-color segments.
-    _drawRouteLine(linePoints, Colors.green);
+    _drawRecordedPoints();
+  }
+
+  List<CircleAnnotation?> _recordedPointAnnotations = [];
+
+  Future<void> _drawRecordedPoints() async {
+    if (circleAnnotationManager == null) return;
+
+    // Clear existing points
+    if (_recordedPointAnnotations.isNotEmpty) {
+      await circleAnnotationManager!.deleteAll();
+      _recordedPointAnnotations.clear();
+    }
+
+    List<CircleAnnotationOptions> optionsList = _recordedPoints.map((p) {
+      Color pointColor;
+      if (p.roughness == 1) {
+        pointColor = Colors.green;
+      } else if (p.roughness == 2) {
+        pointColor = Colors.yellow;
+      } else if (p.roughness == 3) {
+        pointColor = Colors.orange;
+      } else {
+        pointColor = Colors.red;
+      }
+
+      var hexColor = pointColor.value.toRadixString(16).padLeft(8, '0').substring(2);
+
+      return CircleAnnotationOptions(
+        geometry: Point(coordinates: Position(p.lng, p.lat)),
+        circleColor: int.parse('FF$hexColor', radix: 16),
+        circleRadius: 6.0,
+        circleStrokeWidth: 1.0,
+        circleStrokeColor: 0xFFFFFFFF, // white border
+      );
+    }).toList();
+
+    _recordedPointAnnotations = await circleAnnotationManager!.createMulti(optionsList);
   }
   
   Future<void> _drawRouteLine(List<geo.Position> points, Color color) async {
