@@ -91,7 +91,8 @@ class _MapScreenState extends State<MapScreen> {
       enabled: true,
       pulsingEnabled: !_isDrivingMode,
       showAccuracyRing: !_isDrivingMode,
-      puckBearing: PuckBearing.HEADING,
+      puckBearing: PuckBearing.COURSE,
+      puckBearingEnabled: _isDrivingMode,
       locationPuck: (_isDrivingMode && _arrowImage != null) ? LocationPuck(
         locationPuck2D: LocationPuck2D(
           bearingImage: _arrowImage!,
@@ -171,6 +172,7 @@ class _MapScreenState extends State<MapScreen> {
         geometry: Point(coordinates: Position(lng, lat)),
         image: markerImage,
         iconSize: 3.0,
+        iconAnchor: IconAnchor.BOTTOM
       )
     );
   }
