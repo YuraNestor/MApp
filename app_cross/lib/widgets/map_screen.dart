@@ -7,6 +7,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 
+import 'dart:math' as math;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../services/location_service.dart';
@@ -27,6 +28,8 @@ class _MapScreenState extends State<MapScreen> {
   MapboxMap? mapboxMap;
   PointAnnotationManager? pointAnnotationManager;
   PolylineAnnotationManager? polylineAnnotationManager;
+  PolygonAnnotationManager? polygonAnnotationManager;
+  CircleAnnotationManager? circleAnnotationManager;
 
   // Services
   final LocationService _locationService = LocationService();
@@ -77,8 +80,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  CircleAnnotationManager? circleAnnotationManager;
-
   void _onMapCreated(MapboxMap mapboxMap) async {
     this.mapboxMap = mapboxMap;
     // Enable the blue location puck
@@ -90,6 +91,7 @@ class _MapScreenState extends State<MapScreen> {
     
     pointAnnotationManager = await mapboxMap.annotations.createPointAnnotationManager();
     polylineAnnotationManager = await mapboxMap.annotations.createPolylineAnnotationManager();
+    polygonAnnotationManager = await mapboxMap.annotations.createPolygonAnnotationManager();
     circleAnnotationManager = await mapboxMap.annotations.createCircleAnnotationManager();
   }
 
@@ -286,21 +288,53 @@ class _MapScreenState extends State<MapScreen> {
     _drawRecordedPoints();
   }
 
-  List<CircleAnnotation?> _recordedPointAnnotations = [];
+  List<PolygonAnnotation?> _recordedPointAnnotations = [];
+  List<CircleAnnotation?> _recordedCircleAnnotations = [];
+
+  List<Position> _createCirclePolygon(double lat, double lng, double radiusMeters) {
+    List<Position> points = [];
+    int segments = 10;
+    double earthRadius = 6378137.0;
+    
+    double latRad = lat * math.pi / 180.0;
+    double lngRad = lng * math.pi / 180.0;
+    double d = radiusMeters / earthRadius;
+
+    for (int i = 0; i <= segments; i++) {
+      double bearing = 2.0 * math.pi * i / segments;
+      double ptLatRad = math.asin(
+        math.sin(latRad) * math.cos(d) +
+        math.cos(latRad) * math.sin(d) * math.cos(bearing)
+      );
+      double ptLngRad = lngRad + math.atan2(
+        math.sin(bearing) * math.sin(d) * math.cos(latRad),
+        math.cos(d) - math.sin(latRad) * math.sin(ptLatRad)
+      );
+      points.add(Position(ptLngRad * 180.0 / math.pi, ptLatRad * 180.0 / math.pi));
+    }
+    return points;
+  }
 
   Future<void> _drawRecordedPoints() async {
-    if (circleAnnotationManager == null) return;
+    if (polygonAnnotationManager == null || circleAnnotationManager == null) return;
 
     try {
       // Clear existing points
       if (_recordedPointAnnotations.isNotEmpty) {
-        await circleAnnotationManager!.deleteAll();
+        await polygonAnnotationManager!.deleteAll();
         _recordedPointAnnotations = [];
+      }
+      if (_recordedCircleAnnotations.isNotEmpty) {
+        await circleAnnotationManager!.deleteAll();
+        _recordedCircleAnnotations = [];
       }
 
       if (_recordedPoints.isEmpty) return;
 
-      List<CircleAnnotationOptions> optionsList = _recordedPoints.map((p) {
+      List<PolygonAnnotationOptions> polygonOptionsList = [];
+      List<CircleAnnotationOptions> circleOptionsList = [];
+
+      for (var p in _recordedPoints) {
         // Calculate speed factor
         double speedFactor = 1.0;
         if (p.speed > 20) {
@@ -326,14 +360,22 @@ class _MapScreenState extends State<MapScreen> {
         Color pointColor = Color.fromARGB(255, r, g, 0);
         var hexColor = pointColor.value.toRadixString(16).padLeft(8, '0').substring(2);
 
-        return CircleAnnotationOptions(
+        // 2.0 meter radius = 4.0 meter diameter
+        polygonOptionsList.add(PolygonAnnotationOptions(
+          geometry: Polygon(coordinates: [_createCirclePolygon(p.lat, p.lng, 2.0)]),
+          fillColor: int.parse('FF$hexColor', radix: 16),
+        ));
+
+        // 3.0 pixel radius minimal visual fallback for low zooms
+        circleOptionsList.add(CircleAnnotationOptions(
           geometry: Point(coordinates: Position(p.lng, p.lat)),
           circleColor: int.parse('FF$hexColor', radix: 16),
-          circleRadius: 6.0,
-        );
-      }).toList();
+          circleRadius: 3.0,
+        ));
+      }
 
-      _recordedPointAnnotations = await circleAnnotationManager!.createMulti(optionsList);
+      _recordedPointAnnotations = await polygonAnnotationManager!.createMulti(polygonOptionsList);
+      _recordedCircleAnnotations = await circleAnnotationManager!.createMulti(circleOptionsList);
     } catch (e, stacktrace) {
       print("Error in _drawRecordedPoints: $e");
       print(stacktrace);
