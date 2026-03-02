@@ -153,6 +153,8 @@ class _MapScreenState extends State<MapScreen> {
       await pointAnnotationManager!.delete(_userMarker!);
       _userMarker = null;
     }
+    // Restore recorded points after route is gone
+    _drawRecordedPoints();
   }
 
   void _drawDestinationMarker(double lat, double lng) async {
@@ -422,6 +424,7 @@ class _MapScreenState extends State<MapScreen> {
          });
          
          _drawRouteLine(linePoints, Colors.blue);
+         _hideRecordedPoints();
          _zoomToBounds(linePoints);
        }
     } catch (e) {
@@ -472,6 +475,17 @@ class _MapScreenState extends State<MapScreen> {
   void _updateRouteLine() {
     if (_recordedPoints.isEmpty) return;
     _drawRecordedPoints();
+  }
+
+  Future<void> _hideRecordedPoints() async {
+    if (_recordedPointAnnotations.isNotEmpty) {
+      await polygonAnnotationManager?.deleteAll();
+      _recordedPointAnnotations = [];
+    }
+    if (_recordedCircleAnnotations.isNotEmpty) {
+      await circleAnnotationManager?.deleteAll();
+      _recordedCircleAnnotations = [];
+    }
   }
 
   List<PolygonAnnotation?> _recordedPointAnnotations = [];
