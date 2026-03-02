@@ -51,7 +51,7 @@ class _MapScreenState extends State<MapScreen> {
   List<PointData> _recordedPoints = [];
   geo.Position? _currentPos;
   PointAnnotation? _userMarker;
-  PolylineAnnotation? _routeLine;
+  List<PolylineAnnotation?> _routeLines = [];
 
   // Destination
   geo.Position? _destination;
@@ -143,9 +143,11 @@ class _MapScreenState extends State<MapScreen> {
     });
     _updateLocationPuck();
     
-    if (polylineAnnotationManager != null && _routeLine != null) {
-      await polylineAnnotationManager!.delete(_routeLine!);
-      _routeLine = null;
+    if (polylineAnnotationManager != null && _routeLines.isNotEmpty) {
+      for (var line in _routeLines) {
+        if (line != null) await polylineAnnotationManager!.delete(line);
+      }
+      _routeLines.clear();
     }
     if (pointAnnotationManager != null && _userMarker != null) {
       await pointAnnotationManager!.delete(_userMarker!);
@@ -566,22 +568,206 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
   
-  Future<void> _drawRouteLine(List<geo.Position> points, Color color) async {
+  // Haversine distance in meters between two lat/lng pairs
+  double _getDistance(double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371e3;
+    final phi1 = lat1 * math.pi / 180;
+    final phi2 = lat2 * math.pi / 180;
+    final dPhi = (lat2 - lat1) * math.pi / 180;
+    final dLam = (lon2 - lon1) * math.pi / 180;
+
+    final a = math.sin(dPhi / 2) * math.sin(dPhi / 2) +
+        math.cos(phi1) * math.cos(phi2) *
+        math.sin(dLam / 2) * math.sin(dLam / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return R * c;
+  }
+
+  // Perpendicular distance from point p to segment [start, end] (in meters)
+  // start/end are [lng, lat], p has p.lat/p.lng
+  double _getPerpendicularDist(PointData p, List<double> start, List<double> end) {
+    const R = 6371000.0;
+    const d2r = math.pi / 180;
+
+    final lat1 = start[1] * d2r;
+    final lng1 = start[0] * d2r;
+    final lat2 = end[1] * d2r;
+    final lng2 = end[0] * d2r;
+    final lat3 = p.lat * d2r;
+    final lng3 = p.lng * d2r;
+
+    final cosLat = math.cos((lat1 + lat2) / 2);
+    final x2 = (lng2 - lng1) * cosLat;
+    final y2 = lat2 - lat1;
+    final x3 = (lng3 - lng1) * cosLat;
+    final y3 = lat3 - lat1;
+
+    final l2 = x2 * x2 + y2 * y2;
+    if (l2 == 0) return double.infinity;
+
+    final t = (x3 * x2 + y3 * y2) / l2;
+    if (t < 0 || t > 1) return double.infinity;
+
+    final projX = t * x2;
+    final projY = t * y2;
+    final dx = x3 - projX;
+    final dy = y3 - projY;
+
+    return math.sqrt(dx * dx + dy * dy) * R;
+  }
+
+  // Green -> Yellow -> Orange -> Red gradient based on roughness 0-10
+  Color _getColorFromRoughness(double roughness) {
+    final clamped = roughness.clamp(0.0, 10.0);
+    int r, g;
+    if (clamped <= 5) {
+      g = 255;
+      r = ((clamped / 5) * 255).round();
+    } else {
+      r = 255;
+      g = ((1 - ((clamped - 5) / 5)) * 255).round();
+    }
+    return Color.fromARGB(255, r, g, 0);
+  }
+
+  Future<void> _drawRouteLine(List<geo.Position> points, Color fallbackColor) async {
      if (polylineAnnotationManager == null) return;
      
-     if (_routeLine != null) {
-       await polylineAnnotationManager!.delete(_routeLine!);
+     // Clear existing route lines
+     for (var line in _routeLines) {
+       if (line != null) await polylineAnnotationManager!.delete(line);
      }
-     
-     var hexColor = color.value.toRadixString(16).padLeft(8, '0').substring(2);
-     
-     _routeLine = await polylineAnnotationManager!.create(
-       PolylineAnnotationOptions(
-         geometry: LineString(coordinates: points.map((p) => Position(p.longitude, p.latitude)).toList()),
+     _routeLines.clear();
+
+     if (points.length < 2) return;
+
+     // Convert route points to [lng, lat] coordinate pairs
+     final routeCoords = points.map((p) => [p.longitude, p.latitude]).toList();
+
+     // Prepare recorded points with adjusted roughness
+     final adjustedPoints = _recordedPoints.map((p) {
+       double speedFactor = 1.0;
+       if (p.speed > 20) speedFactor = 20 / p.speed;
+       double speedMultiplier = 1.0 + ((_speedInfluenceMultiplier - 1.0) * (1.0 - speedFactor));
+       double adjusted = p.roughness * _sensitivityMultiplier * speedMultiplier;
+       return _AdjustedPoint(p, adjusted);
+     }).toList();
+
+     // Build sub-segments with color data
+     List<_RouteSubSegment> subSegments = [];
+
+     for (int i = 0; i < routeCoords.length - 1; i++) {
+       final start = routeCoords[i];
+       final end = routeCoords[i + 1];
+       final segmentLength = _getDistance(start[1], start[0], end[1], end[0]);
+
+       double chunkSize = 5.0; // meters
+       // Optimization for long distances
+       if (segmentLength > 5000) chunkSize = 200;
+       else if (segmentLength > 1000) chunkSize = 50;
+       else if (segmentLength > 200) chunkSize = 15;
+
+       final numSplits = math.max(1, (segmentLength / chunkSize).ceil());
+
+       for (int k = 0; k < numSplits; k++) {
+         final ratioStart = k / numSplits;
+         final ratioEnd = (k + 1) / numSplits;
+
+         final subStart = [
+           start[0] + (end[0] - start[0]) * ratioStart,
+           start[1] + (end[1] - start[1]) * ratioStart
+         ];
+         final subEnd = [
+           start[0] + (end[0] - start[0]) * ratioEnd,
+           start[1] + (end[1] - start[1]) * ratioEnd
+         ];
+
+         final midLng = (subStart[0] + subEnd[0]) / 2;
+         final midLat = (subStart[1] + subEnd[1]) / 2;
+
+         // Find nearby recorded points and calculate weighted average roughness
+         double sumRoughness = 0;
+         double totalWeight = 0;
+
+         for (var ap in adjustedPoints) {
+           // Fast bounding box pre-filter (~20m)
+           if ((ap.point.lat - midLat).abs() > 0.0002 || (ap.point.lng - midLng).abs() > 0.0002) continue;
+
+           final dist = _getPerpendicularDist(ap.point, subStart, subEnd);
+           final maxDist = math.max(10.0, chunkSize / 2);
+
+           if (dist <= maxDist) {
+             double weight = 1 / (dist + 1);
+             sumRoughness += ap.adjustedRoughness * weight;
+             totalWeight += weight;
+           }
+         }
+
+         Color? segColor;
+         if (totalWeight > 0) {
+           segColor = _getColorFromRoughness(sumRoughness / totalWeight);
+         }
+
+         subSegments.add(_RouteSubSegment(subStart, subEnd, segColor));
+       }
+     }
+
+     // Second pass: fill null-colored gaps by interpolating from neighbors
+     const maxGapFill = 20;
+     for (int i = 0; i < subSegments.length; i++) {
+       if (subSegments[i].color != null) continue;
+
+       Color? prevColor;
+       Color? nextColor;
+       int gapToPrev = 0;
+       int gapToNext = 0;
+
+       for (int j = i - 1; j >= 0; j--) {
+         gapToPrev++;
+         if (subSegments[j].color != null) { prevColor = subSegments[j].color; break; }
+       }
+       for (int j = i + 1; j < subSegments.length; j++) {
+         gapToNext++;
+         if (subSegments[j].color != null) { nextColor = subSegments[j].color; break; }
+       }
+
+       if (gapToPrev <= maxGapFill && gapToNext <= maxGapFill && prevColor != null && nextColor != null) {
+         final totalGap = gapToPrev + gapToNext;
+         final ratio = gapToPrev / totalGap;
+         final r = (prevColor.red + (nextColor.red - prevColor.red) * ratio).round();
+         final g = (prevColor.green + (nextColor.green - prevColor.green) * ratio).round();
+         subSegments[i].color = Color.fromARGB(255, r, g, 0);
+       } else if (gapToPrev <= maxGapFill && prevColor != null) {
+         subSegments[i].color = prevColor;
+       } else if (gapToNext <= maxGapFill && nextColor != null) {
+         subSegments[i].color = nextColor;
+       } else {
+         subSegments[i].color = fallbackColor; // Default blue for unrecorded areas
+       }
+     }
+
+     // Merge consecutive segments with the same color into longer polylines to reduce annotation count
+     List<PolylineAnnotationOptions> optionsList = [];
+     int segIdx = 0;
+     while (segIdx < subSegments.length) {
+       final currentColor = subSegments[segIdx].color!;
+       List<Position> mergedCoords = [Position(subSegments[segIdx].start[0], subSegments[segIdx].start[1])];
+       
+       while (segIdx < subSegments.length && subSegments[segIdx].color == currentColor) {
+         mergedCoords.add(Position(subSegments[segIdx].end[0], subSegments[segIdx].end[1]));
+         segIdx++;
+       }
+
+       var hexColor = currentColor.value.toRadixString(16).padLeft(8, '0').substring(2);
+       optionsList.add(PolylineAnnotationOptions(
+         geometry: LineString(coordinates: mergedCoords),
          lineColor: int.parse('FF$hexColor', radix: 16),
          lineWidth: 5.0,
-       )
-     );
+       ));
+     }
+
+     // Batch create all polyline annotations
+     _routeLines = await polylineAnnotationManager!.createMulti(optionsList);
   }
 
   @override
@@ -781,4 +967,18 @@ class _MapScreenState extends State<MapScreen> {
 // Helper to bridge Geolocator class name collision
 class GeolocatorPosition extends geo.Position {
    GeolocatorPosition({required super.longitude, required super.latitude, required super.timestamp, required super.accuracy, required super.altitude, required super.altitudeAccuracy, required super.heading, required super.headingAccuracy, required super.speed, required super.speedAccuracy});
+}
+
+// Helper classes for colored route algorithm
+class _AdjustedPoint {
+  final PointData point;
+  final double adjustedRoughness;
+  _AdjustedPoint(this.point, this.adjustedRoughness);
+}
+
+class _RouteSubSegment {
+  final List<double> start;
+  final List<double> end;
+  Color? color;
+  _RouteSubSegment(this.start, this.end, this.color);
 }
